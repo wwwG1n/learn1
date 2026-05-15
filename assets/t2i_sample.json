@@ -1,0 +1,52 @@
+[
+    {
+        "system_prompt": "Generate an image accroding to the text prompt.",
+        "user_prompt": "Close-up photo of a person wearing an orange sweater, holding a waffle cone filled with ice cream topped with colorful sprinkles and red sauce. The cone is held in the person's right hand, positioned in the lower center of the frame. The background features a dark, tiled floor with a geometric pattern, partially visible in the bottom right corner. The lighting is harsh and direct, creating strong shadows and highlighting the textures of the ice cream and the waffle cone. The image has a candid, casual feel, with a focus on the vibrant colors of the ice cream against the muted tones of the sweater and background. Photorealistic, high contrast, sharp focus, intimate, everyday moment.\n",
+        "user_image": "",
+        "answer_thinking": "",
+        "answer_text": "",
+        "answer_image": "code-producted/image/files/487594.pkl",
+        "id": 487594,
+        "len": 1024
+    },
+    {
+        "system_prompt": "Generate an image accroding to the text prompt.",
+        "user_prompt": "Intricate digital rendering of a metallic emblem set against a textured teal background. The emblem features a bronze circular design with a crescent shape extending from the top and bottom, framing a central bronze sphere. The background has a marbled appearance with swirling patterns and subtle gold accents, creating a sense of depth and richness. The emblem is centrally positioned, casting a soft shadow on the background, enhancing its three-dimensional appearance. High contrast, photorealistic textures, metallic sheen, luxurious, elegant, visually balanced, digital art, dynamic lighting, rich color palette.\n",
+        "user_image": "",
+        "answer_thinking": "",
+        "answer_text": "",
+        "answer_image": "code-producted/image/files/392029.pkl",
+        "id": 392029,
+        "len": 1008
+    },
+    {
+        "system_prompt": "Generate an image accroding to the text prompt.",
+        "user_prompt": "3D animated scene featuring two iconic characters in a boxing stance against a dark background. On the left, a yellow, porous, square-shaped character with large blue eyes and a wide smile, wearing a white shirt, red tie, and pink shorts, dons red boxing gloves. On the right, a muscular figure in a red and blue suit with a black web pattern, also wearing red boxing gloves, stands in a defensive pose. The characters are positioned on a textured, dark surface, with dramatic lighting highlighting their expressions and costumes. The scene is vibrant, with a focus on the characters' exaggerated features and dynamic poses, creating a playful and energetic atmosphere. High contrast, photorealistic textures, digital animation, visually balanced composition.\n",
+        "user_image": "",
+        "answer_thinking": "",
+        "answer_text": "",
+        "answer_image": "code-producted/image/files/247965.pkl",
+        "id": 247965,
+        "len": 1008
+    },
+    {
+        "system_prompt": "Generate an image accroding to the text prompt.",
+        "user_prompt": "The image is a black and white illustration depicting a close-up view of a person's hands interacting with a printer. The person's left hand is holding a document with the word \"ISSUED\" prominently displayed at the top, suggesting that the document has been printed. The document has a header with a circular logo and several lines of text below the header. The right hand is positioned above the printer, holding a sheet of paper that appears to be the document that has been printed. The printer is shown with a paper tray open, and the document is being inserted into the tray. The background is a textured pattern that resembles a halftone dot design, commonly found in printed materials. The illustration style is reminiscent of vintage or retro designs, with bold lines and shading that give a sense of depth and texture to the objects and the person's hands.\n",
+        "user_image": "",
+        "answer_thinking": "",
+        "answer_text": "",
+        "answer_image": "code-producted/image/files/428597.pkl",
+        "id": 428597,
+        "len": 1024
+    },
+    {
+        "system_prompt": "Generate an image accroding to the text prompt.",
+        "user_prompt": "Bold, minimalist illustration featuring a pink cartoon dog sleeping in the lower right corner against a vibrant orange background. The dog is depicted in a simple, rounded style with closed eyes, conveying a sense of tranquility. Above the dog, the word \"LAZY\" is written in large, blocky letters, matching the pink hue of the dog. The letters are outlined in black, creating a stark contrast against the orange backdrop. The composition is playful and straightforward, emphasizing the theme of inactivity and leisure. Flat colors, high contrast, cartoonish style, bold typography, whimsical, visually striking.\n",
+        "user_image": "",
+        "answer_thinking": "",
+        "answer_text": "",
+        "answer_image": "code-producted/image/files/176413.pkl",
+        "id": 176413,
+        "len": 1024
+    },
+]

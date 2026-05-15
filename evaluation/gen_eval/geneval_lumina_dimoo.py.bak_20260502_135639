@@ -1,0 +1,630 @@
+# -*- coding: utf-8 -*-
+"""
+Lumina-DiMOO GenEval：批量生成评估图像。
+默认 --rewrite 0：使用原始 prompt，不进行 rewrite。设为 --rewrite 1 时：先查缓存，未命中再调 API 并写回。
+仓库根目录：python evaluation/gen_eval/geneval_lumina_dimoo.py
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import sys
+import time
+from datetime import datetime
+
+_GEN_EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.abspath(os.path.join(_GEN_EVAL_DIR, "..", ".."))
+for _p in (_REPO_ROOT, _GEN_EVAL_DIR):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+import numpy as np
+import torch
+from PIL import Image
+from diffusers import VQModel
+from tqdm import tqdm
+from transformers import AutoTokenizer
+
+from config import SPECIAL_TOKENS
+from generators.image_generation_generator import generate_image
+from model import LLaDAForMultiModalGeneration
+from utils.generation_utils import setup_seed
+from utils.image_utils import add_break_line, calculate_vq_params, decode_vq_to_image
+from utils.prompt_utils import create_prompt_templates, generate_text_to_image_prompt
+
+# 1024x1024 default RoPE wavelengths (head_dim=128 -> 64 frequency pairs).
+DEFAULT_ROPE_WAVELENGTHS_1024 = [
+    6.28, 7.71, 9.47, 11.62, 14.27, 17.52, 21.50, 26.39, 32.40, 39.77, 48.83, 59.94, 73.58, 90.32, 110.87, 136.11,
+    167.08, 205.10, 251.78, 309.07, 379.41, 465.75, 571.74, 701.85, 861.58, 1057.65, 1298.33, 1593.80, 1956.50, 2401.74, 2948.30, 3619.25,
+    4442.88, 5453.95, 6695.11, 8218.72, 10089.06, 12385.03, 15203.49, 18663.35, 22910.58, 28124.35, 34524.62, 42381.40, 52026.16, 63865.77, 78399.73, 96241.19,
+    118142.83, 145028.64, 178032.87, 218547.88, 268282.90, 329336.15, 404283.31, 496286.22, 609226.27, 747868.13, 918060.78, 1126984.24, 1383452.48, 1698285.31, 2084764.77, 2559195.52,
+]
+
+
+def get_args_parser():
+    p = argparse.ArgumentParser("Lumina-DiMOO GenEval image generation")
+    p.add_argument(
+        "--checkpoint",
+        type=str,
+        default="/mnt/data1/yanfeihong/projs/Lumina-DiMOO/weights",
+        help="Model checkpoint path",
+    )
+    p.add_argument(
+        "--metadata_file",
+        type=str,
+        default="prompts/evaluation_metadata.jsonl",
+        help="Path to evaluation_metadata.jsonl (cwd = repo root)",
+    )
+    p.add_argument(
+        "--output_root",
+        type=str,
+        default="output/geneval_results",
+        help="Root directory for output runs",
+    )
+    p.add_argument(
+        "--output_dir_prefix",
+        type=str,
+        default="",
+        help="Optional; run folder = {prefix}_lumina_dimoo_geneval_<timestamp> if non-empty else lumina_dimoo_geneval_<timestamp>",
+    )
+    p.add_argument(
+        "--rewrite",
+        type=int,
+        choices=(0, 1),
+        default=0,
+        help="0=use original prompts only (default); 1=rewrite from cache then API on miss",
+    )
+    p.add_argument(
+        "--rewrite-cache-file",
+        dest="rewrite_cache_file",
+        type=str,
+        default="evaluation/gen_eval/prompt_rewrite_cache.json",
+        help="JSON map original_prompt -> rewritten (relative to cwd)",
+    )
+    p.add_argument("--n_samples", type=int, default=4, help="Samples per prompt")
+    p.add_argument("--height", type=int, default=512)
+    p.add_argument("--width", type=int, default=512)
+    p.add_argument("--timesteps", type=int, default=64)
+    p.add_argument("--cfg_scale", type=float, default=4.0)
+    p.add_argument("--temperature", type=float, default=1.0)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--use_cache", action="store_true", default=True)
+    p.add_argument("--no_cache", dest="use_cache", action="store_false")
+    p.add_argument("--cache_ratio", type=float, default=0.9)
+    p.add_argument("--warmup_ratio", type=float, default=0.3)
+    p.add_argument("--refresh_interval", type=int, default=5)
+    p.add_argument("--high_conf_threshold", type=float, default=0.9)
+    p.add_argument("--high_conf_start_step", type=int, default=10)
+    p.add_argument("--neighborhood_size", type=int, default=3)
+    p.add_argument("--neighborhood_mean_threshold", type=float, default=0.2)
+    p.add_argument("--decoded_neighbor_rule", action="store_true", default=False,
+                   help="Enable off-quota early decode when a masked token has enough already-decoded 4-neighbors.")
+    p.add_argument("--no_decoded_neighbor_rule", dest="decoded_neighbor_rule", action="store_false",
+                   help="Disable the decoded-neighbor early-decode rule.")
+    p.add_argument("--decoded_neighbor_start_ratio", type=float, default=(1.0 / 3.0),
+                   help="Activate the decoded-neighbor rule once ceil(total_tokens * ratio) tokens have already been committed.")
+    p.add_argument("--decoded_neighbor_min_count", type=int, default=2,
+                   help="A masked token needs at least this many decoded 4-neighbors to be committed immediately.")
+    p.add_argument("--branch_interval", type=int, default=0,
+                   help="0 disables; else save 'decode-all-now' snapshot image every N steps (per sample).")
+    p.add_argument("--branch_start", type=int, default=5,
+                   help="First step (1-based) to take a branch snapshot at.")
+    p.add_argument("--save_heatmaps", action="store_true", default=False,
+                   help="If set, also save confidence_heatmaps.png / decode_step_map.png per sample.")
+    p.add_argument(
+        "--rope_encoding_mode",
+        type=str,
+        choices=["custom", "original"],
+        default="custom",
+    )
+    return p
+
+
+def _compute_rope_wavelengths_from_theta(head_dim, rope_theta):
+    return [2.0 * math.pi * (rope_theta ** (i / head_dim)) for i in range(0, head_dim, 2)]
+
+
+def _clear_rope_cache(model):
+    for block in model.model.transformer.blocks:
+        if hasattr(block, "rotary_emb"):
+            cache = block.rotary_emb._RotaryEmbedding__cache
+            cache.pop("rope_pos_sin", None)
+            cache.pop("rope_pos_cos", None)
+
+
+def _configure_rope_mode(model, rope_encoding_mode):
+    head_dim = model.config.d_model // model.config.n_heads
+    if rope_encoding_mode == "custom":
+        wavelengths = list(DEFAULT_ROPE_WAVELENGTHS_1024)
+        for c in (model.config, model.model.config):
+            c.rope_wavelengths = wavelengths
+        print("[RoPE] mode=custom (explicit wavelength table)")
+    else:
+        wavelengths = _compute_rope_wavelengths_from_theta(head_dim, model.config.rope_theta)
+        for c in (model.config, model.model.config):
+            c.rope_wavelengths = None
+        print(f"[RoPE] mode=original (computed from rope_theta={model.config.rope_theta})")
+
+    _clear_rope_cache(model)
+    print(f"[RoPE] head_dim={head_dim}, num_frequency_pairs={head_dim // 2}")
+    print(f"[RoPE] first 8 wavelengths: {[round(float(x), 2) for x in wavelengths[:8]]}")
+
+
+def convert_torch_to_int(data):
+    if isinstance(data, torch.Tensor):
+        return int(data.item())
+    if isinstance(data, list):
+        return [convert_torch_to_int(item) for item in data]
+    if isinstance(data, dict):
+        return {key: convert_torch_to_int(value) for key, value in data.items()}
+    return data
+
+
+def default_dump(obj):
+    if isinstance(obj, (np.integer, np.floating, np.bool_)):
+        return obj.item()
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
+
+
+def _md_escape(value):
+    text = "" if value is None else str(value)
+    return text.replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+
+
+def _write_executed_steps_report(output_dir, run_folder, rows):
+    report_path = os.path.join(output_dir, "executed_steps_report.md")
+    ok_rows = [row for row in rows if row.get("status") == "ok" and row.get("executed_steps") is not None]
+    executed_vals = [int(row["executed_steps"]) for row in ok_rows]
+    summary = {
+        "total_images": len(rows),
+        "successful_images": len(ok_rows),
+        "failed_images": len(rows) - len(ok_rows),
+        "avg_executed_steps": (sum(executed_vals) / len(executed_vals)) if executed_vals else None,
+        "min_executed_steps": min(executed_vals) if executed_vals else None,
+        "max_executed_steps": max(executed_vals) if executed_vals else None,
+    }
+
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("# Executed Steps Report\n\n")
+        f.write(f"- run_folder: `{run_folder}`\n")
+        f.write(f"- total_images: {summary['total_images']}\n")
+        f.write(f"- successful_images: {summary['successful_images']}\n")
+        f.write(f"- failed_images: {summary['failed_images']}\n")
+        if summary["avg_executed_steps"] is None:
+            f.write("- avg_executed_steps: N/A\n")
+            f.write("- min_executed_steps: N/A\n")
+            f.write("- max_executed_steps: N/A\n")
+        else:
+            f.write(f"- avg_executed_steps: {summary['avg_executed_steps']:.4f}\n")
+            f.write(f"- min_executed_steps: {summary['min_executed_steps']}\n")
+            f.write(f"- max_executed_steps: {summary['max_executed_steps']}\n")
+
+        f.write("\n## Per-Image Records\n\n")
+        f.write("| prompt_idx | sample_idx | seed | status | executed_steps | early_exit_step | total_timesteps | decoded_neighbor_activation_step | decoded_neighbor_total_decodes | sample_path | prompt_preview | error |\n")
+        f.write("|---|---:|---:|---|---:|---:|---:|---:|---:|---|---|---|\n")
+        for row in rows:
+            f.write(
+                "| "
+                + " | ".join(
+                    [
+                        _md_escape(row.get("prompt_idx")),
+                        _md_escape(row.get("sample_idx")),
+                        _md_escape(row.get("seed")),
+                        _md_escape(row.get("status")),
+                        _md_escape(row.get("executed_steps")),
+                        _md_escape(row.get("early_exit_step")),
+                        _md_escape(row.get("total_timesteps")),
+                        _md_escape(row.get("decoded_neighbor_activation_step")),
+                        _md_escape(row.get("decoded_neighbor_total_decodes")),
+                        _md_escape(row.get("sample_path")),
+                        _md_escape(row.get("prompt_preview")),
+                        _md_escape(row.get("error")),
+                    ]
+                )
+                + " |\n"
+            )
+
+    return report_path, summary
+
+
+def generate_single_image(
+    model,
+    tokenizer,
+    vqvae,
+    prompt_text,
+    height,
+    width,
+    timesteps,
+    cfg_scale,
+    temperature,
+    seed,
+    use_cache,
+    cache_ratio,
+    warmup_ratio,
+    refresh_interval,
+    device,
+    high_conf_threshold=0.9,
+    high_conf_start_step=10,
+    neighborhood_size=3,
+    neighborhood_mean_threshold=0.2,
+    decoded_neighbor_rule=False,
+    decoded_neighbor_start_ratio=(1.0 / 3.0),
+    decoded_neighbor_min_count=2,
+    branch_interval=0,
+    branch_start=5,
+    return_tracking=False,
+    return_stats=False,
+):
+    MASK = SPECIAL_TOKENS["mask_token"]
+    NEW_LINE = SPECIAL_TOKENS["newline_token"]
+    BOA = SPECIAL_TOKENS["answer_start"]
+    EOA = SPECIAL_TOKENS["answer_end"]
+    BOI = SPECIAL_TOKENS["boi"]
+    EOI = SPECIAL_TOKENS["eoi"]
+
+    if seed > 0:
+        setup_seed(seed)
+
+    seq_len, newline_every, token_grid_height, token_grid_width = calculate_vq_params(height, width)
+    templates = create_prompt_templates()
+    input_prompt, uncon_prompt = generate_text_to_image_prompt(prompt_text, templates)
+    con_prompt_token = tokenizer(input_prompt)["input_ids"]
+    uncon_prompt_token = tokenizer(uncon_prompt)["input_ids"]
+    img_mask_token = add_break_line(
+        [MASK] * seq_len,
+        token_grid_height,
+        token_grid_width,
+        new_number=NEW_LINE,
+    )
+    img_pred_token = [BOA] + [BOI] + img_mask_token + [EOI] + [EOA]
+    prompt_ids = torch.tensor(con_prompt_token + img_pred_token, device=device).unsqueeze(0)
+    uncon_ids = torch.tensor(uncon_prompt_token, device=device).unsqueeze(0)
+    code_start = len(con_prompt_token) + 2
+
+    gen_out = generate_image(
+        model,
+        prompt_ids,
+        seq_len=seq_len,
+        newline_every=newline_every,
+        timesteps=timesteps,
+        temperature=temperature,
+        cfg_scale=cfg_scale,
+        uncon_ids=uncon_ids,
+        code_start=code_start,
+        use_cache=use_cache,
+        cache_ratio=cache_ratio,
+        refresh_interval=refresh_interval,
+        warmup_ratio=warmup_ratio,
+        high_conf_threshold=high_conf_threshold,
+        high_conf_start_step=high_conf_start_step,
+        neighborhood_size=neighborhood_size,
+        neighborhood_mean_threshold=neighborhood_mean_threshold,
+        decoded_neighbor_rule=decoded_neighbor_rule,
+        decoded_neighbor_start_ratio=decoded_neighbor_start_ratio,
+        decoded_neighbor_min_count=decoded_neighbor_min_count,
+        return_tracking=return_tracking,
+        return_stats=return_stats,
+        branch_interval=branch_interval,
+        branch_start=branch_start,
+    )
+
+    tracking = None
+    branch_snapshots = []
+    if return_tracking or return_stats:
+        vq_tokens, tracking = gen_out
+        branch_snapshots = tracking.get("branch_snapshots", [])
+    elif branch_interval > 0:
+        vq_tokens, branch_snapshots = gen_out
+    else:
+        vq_tokens = gen_out
+
+    temp_path = "/tmp/temp_image.png"
+    final_img = decode_vq_to_image(
+        vq_tokens,
+        temp_path,
+        vae_ckpt=None,
+        image_height=height,
+        image_width=width,
+        vqvae=vqvae,
+    )
+    if return_tracking or return_stats or branch_interval > 0:
+        return final_img, tracking, branch_snapshots, code_start, seq_len
+    return final_img
+
+
+def main(args):
+    print("Lumina-DiMOO GenEval generation")
+    print(f"checkpoint={args.checkpoint}")
+    print(f"metadata_file={args.metadata_file}")
+    print(f"rewrite={args.rewrite}, rewrite_cache_file={args.rewrite_cache_file}")
+    prefix = (args.output_dir_prefix or "").strip()
+
+    setup_seed(args.seed)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if prefix:
+        run_folder = f"{prefix}_lumina_dimoo_geneval_{timestamp}"
+    else:
+        run_folder = f"lumina_dimoo_geneval_{timestamp}"
+    output_dir = os.path.join(args.output_root, run_folder)
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"run_dir={os.path.abspath(output_dir)}")
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"device={device}")
+
+    rewrite_cache_path = os.path.abspath(args.rewrite_cache_file)
+    prompt_rewrite_cache: dict = {}
+    rewriter = None
+    if args.rewrite:
+        if os.path.isfile(rewrite_cache_path):
+            with open(rewrite_cache_path, encoding="utf-8") as f:
+                prompt_rewrite_cache = json.load(f)
+        else:
+            print(f"[rewrite] no cache file yet, will create on API fills: {rewrite_cache_path}")
+        from prompt_rewriter import PromptRewriter
+
+        rewriter = PromptRewriter(system="", few_shot_history=[])
+    cache_modified = False
+
+    print("Loading tokenizer / model / VQVAE ...")
+    tokenizer = AutoTokenizer.from_pretrained(args.checkpoint, trust_remote_code=True)
+    model = LLaDAForMultiModalGeneration.from_pretrained(
+        args.checkpoint,
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+    )
+    model.eval()
+    _configure_rope_mode(model, args.rope_encoding_mode)
+    vqvae = VQModel.from_pretrained(args.checkpoint, subfolder="vqvae").to(device)
+    vqvae.eval()
+    print("Model ready.")
+
+    with open(args.metadata_file, encoding="utf-8") as fp:
+        metadatas = [json.loads(line) for line in fp]
+    print(f"num_prompts={len(metadatas)}")
+
+    total_time = 0
+    executed_step_rows = []
+    for index, metadata in enumerate(tqdm(metadatas, desc="generate")):
+        sample_output_dir = os.path.join(output_dir, f"{index:05d}")
+        os.makedirs(sample_output_dir, exist_ok=True)
+        samples_dir = os.path.join(sample_output_dir, "samples")
+        os.makedirs(samples_dir, exist_ok=True)
+
+        original_prompt = metadata["prompt"]
+        gen_prompt = original_prompt
+        if args.rewrite and rewriter is not None:
+            if original_prompt in prompt_rewrite_cache:
+                gen_prompt = prompt_rewrite_cache[original_prompt]
+            else:
+                gen_prompt = rewriter.rewrite(original_prompt)
+                prompt_rewrite_cache[original_prompt] = gen_prompt
+                cache_modified = True
+            if gen_prompt != original_prompt:
+                print(f"\n[{index}] rewrite: {original_prompt[:80]!r} -> {gen_prompt[:80]!r}")
+
+        print(f"\n[{index + 1}/{len(metadatas)}] gen_prompt[:80]={gen_prompt[:80]!r}...")
+
+        metadata_converted = convert_torch_to_int(metadata)
+        with open(os.path.join(sample_output_dir, "metadata.jsonl"), "w", encoding="utf-8") as fp:
+            json.dump(metadata_converted, fp, indent=4, default=default_dump)
+
+        sample_images = []
+        t0 = time.time()
+        for sample_idx in range(args.n_samples):
+            sample_seed = args.seed + index * args.n_samples + sample_idx
+            sample_image_path = os.path.join(samples_dir, f"{sample_idx:04d}.png")
+            try:
+                want_trace = bool(args.save_heatmaps)
+                want_branches = int(args.branch_interval) > 0
+                want_stats = True
+                out = generate_single_image(
+                    model=model,
+                    tokenizer=tokenizer,
+                    vqvae=vqvae,
+                    prompt_text=gen_prompt,
+                    height=args.height,
+                    width=args.width,
+                    timesteps=args.timesteps,
+                    cfg_scale=args.cfg_scale,
+                    temperature=args.temperature,
+                    seed=sample_seed,
+                    use_cache=args.use_cache,
+                    cache_ratio=args.cache_ratio,
+                    warmup_ratio=args.warmup_ratio,
+                    refresh_interval=args.refresh_interval,
+                    device=device,
+                    high_conf_threshold=args.high_conf_threshold,
+                    high_conf_start_step=args.high_conf_start_step,
+                    neighborhood_size=args.neighborhood_size,
+                    neighborhood_mean_threshold=args.neighborhood_mean_threshold,
+                    decoded_neighbor_rule=args.decoded_neighbor_rule,
+                    decoded_neighbor_start_ratio=args.decoded_neighbor_start_ratio,
+                    decoded_neighbor_min_count=args.decoded_neighbor_min_count,
+                    branch_interval=args.branch_interval,
+                    branch_start=args.branch_start,
+                    return_tracking=want_trace,
+                    return_stats=want_stats,
+                )
+                if want_trace or want_stats or want_branches:
+                    img, tracking, branch_snaps, code_start, seq_len = out
+                else:
+                    img = out
+                    tracking, branch_snaps, code_start, seq_len = None, [], None, None
+
+                img.save(sample_image_path)
+                sample_images.append(img)
+
+                if branch_snaps or want_trace:
+                    snap_dir = os.path.join(samples_dir, f"{sample_idx:04d}_snapshots")
+                    os.makedirs(snap_dir, exist_ok=True)
+                    if branch_snaps:
+                        newline_id = SPECIAL_TOKENS["newline_token"]
+                        for step_1b, x_snap in branch_snaps:
+                            vq_ids_snap = x_snap[0, code_start:-2]
+                            vq_ids_snap = vq_ids_snap[vq_ids_snap != newline_id].view(1, seq_len)
+                            bpath = os.path.join(snap_dir, f"branch_step_{step_1b:02d}.png")
+                            bimg = decode_vq_to_image(
+                                vq_ids_snap, bpath,
+                                vae_ckpt=None,
+                                image_height=args.height,
+                                image_width=args.width,
+                                vqvae=vqvae,
+                            )
+                            bimg.save(bpath)
+                    if want_trace and tracking is not None:
+                        try:
+                            from tools.plot_token_trace_heatmaps import _plot_step_grid, _plot_decode_step_map
+                            T_ = tracking["timesteps"]
+                            H_ = tracking["grid_height"]
+                            W_ = tracking["grid_width"]
+                            conf_arr = np.array(tracking["conf_matrix"], dtype=np.float32).reshape(H_ * W_, T_)
+                            conf_arr = conf_arr.reshape(H_, W_, T_).transpose(2, 0, 1)
+                            ds_arr = np.array(tracking["decode_step"], dtype=np.int32).reshape(H_, W_)
+                            _plot_step_grid(
+                                conf_arr,
+                                os.path.join(snap_dir, "confidence_heatmaps.png"),
+                                title=f"sample{sample_idx:04d} | per-step conf ({H_}x{W_}), T={T_}",
+                            )
+                            _plot_decode_step_map(
+                                ds_arr, T_,
+                                os.path.join(snap_dir, "decode_step_map.png"),
+                                title=f"sample{sample_idx:04d} | decode step map ({H_}x{W_})",
+                            )
+                        except Exception as e:
+                            print(f"  [Heatmap] skipped: {e}")
+
+                executed_steps = None
+                early_exit_step = None
+                total_timesteps = args.timesteps
+                decoded_neighbor_activation_step = None
+                decoded_neighbor_total_decodes = None
+                if tracking is not None:
+                    total_timesteps = int(tracking.get("total_timesteps", args.timesteps))
+                    early_exit_step = tracking.get("early_exit_step")
+                    executed_steps = int(tracking.get("executed_steps", early_exit_step or total_timesteps))
+                    decoded_neighbor_activation_step = tracking.get("decoded_neighbor_activation_step")
+                    decoded_neighbor_total_decodes = tracking.get("decoded_neighbor_total_decodes")
+
+                executed_step_rows.append(
+                    {
+                        "prompt_idx": index + 1,
+                        "sample_idx": sample_idx + 1,
+                        "seed": sample_seed,
+                        "status": "ok",
+                        "executed_steps": executed_steps,
+                        "early_exit_step": early_exit_step,
+                        "total_timesteps": total_timesteps,
+                        "decoded_neighbor_activation_step": decoded_neighbor_activation_step,
+                        "decoded_neighbor_total_decodes": decoded_neighbor_total_decodes,
+                        "sample_path": sample_image_path,
+                        "prompt_preview": gen_prompt[:120],
+                        "error": "",
+                    }
+                )
+                print(f"  ok sample {sample_idx + 1}/{args.n_samples}")
+            except Exception as e:
+                print(f"  fail sample {sample_idx + 1}: {e}")
+                blank = Image.new("RGB", (args.width, args.height), color="gray")
+                blank.save(sample_image_path)
+                sample_images.append(blank)
+                executed_step_rows.append(
+                    {
+                        "prompt_idx": index + 1,
+                        "sample_idx": sample_idx + 1,
+                        "seed": sample_seed,
+                        "status": "fail",
+                        "executed_steps": None,
+                        "early_exit_step": None,
+                        "total_timesteps": args.timesteps,
+                        "decoded_neighbor_activation_step": None,
+                        "decoded_neighbor_total_decodes": None,
+                        "sample_path": sample_image_path,
+                        "prompt_preview": gen_prompt[:120],
+                        "error": str(e),
+                    }
+                )
+
+        if sample_images:
+            grid_cols = int(np.ceil(np.sqrt(args.n_samples)))
+            grid_rows = int(np.ceil(args.n_samples / grid_cols))
+            grid_img = Image.new("RGB", (args.width * grid_cols, args.height * grid_rows), color="white")
+            for idx, img in enumerate(sample_images):
+                row, col = idx // grid_cols, idx % grid_cols
+                grid_img.paste(img, (col * args.width, row * args.height))
+            grid_img.save(os.path.join(sample_output_dir, "grid.png"))
+
+        elapsed = time.time() - t0
+        total_time += elapsed
+        print(f"  elapsed {elapsed:.2f}s ({elapsed / args.n_samples:.2f}s / img)")
+
+    if args.rewrite and cache_modified:
+        os.makedirs(os.path.dirname(rewrite_cache_path) or ".", exist_ok=True)
+        with open(rewrite_cache_path, "w", encoding="utf-8") as f:
+            json.dump(prompt_rewrite_cache, f, indent=2, ensure_ascii=False)
+        print(f"rewrite cache saved -> {rewrite_cache_path}")
+
+    executed_steps_report_path, executed_steps_summary = _write_executed_steps_report(
+        output_dir,
+        run_folder,
+        executed_step_rows,
+    )
+    avg_msg = executed_steps_summary["avg_executed_steps"]
+    avg_str = "N/A" if avg_msg is None else f"{avg_msg:.4f}"
+    print(f"[ExecutedSteps] report -> {executed_steps_report_path}")
+    print(
+        "[ExecutedSteps] "
+        f"successful={executed_steps_summary['successful_images']}/{executed_steps_summary['total_images']} "
+        f"avg={avg_str} "
+        f"min={executed_steps_summary['min_executed_steps']} "
+        f"max={executed_steps_summary['max_executed_steps']}"
+    )
+
+    params = {
+        "checkpoint": args.checkpoint,
+        "metadata_file": args.metadata_file,
+        "output_root": args.output_root,
+        "output_dir_prefix": prefix,
+        "run_folder": run_folder,
+        "rewrite": args.rewrite,
+        "rewrite_cache_file": rewrite_cache_path,
+        "n_samples": args.n_samples,
+        "height": args.height,
+        "width": args.width,
+        "timesteps": args.timesteps,
+        "cfg_scale": args.cfg_scale,
+        "temperature": args.temperature,
+        "seed": args.seed,
+        "use_cache": args.use_cache,
+        "cache_ratio": args.cache_ratio,
+        "warmup_ratio": args.warmup_ratio,
+        "refresh_interval": args.refresh_interval,
+        "high_conf_threshold": args.high_conf_threshold,
+        "high_conf_start_step": args.high_conf_start_step,
+        "neighborhood_size": args.neighborhood_size,
+        "neighborhood_mean_threshold": args.neighborhood_mean_threshold,
+        "decoded_neighbor_rule": args.decoded_neighbor_rule,
+        "decoded_neighbor_start_ratio": args.decoded_neighbor_start_ratio,
+        "decoded_neighbor_min_count": args.decoded_neighbor_min_count,
+        "rope_encoding_mode": args.rope_encoding_mode,
+        "total_samples": len(metadatas),
+        "total_images": len(metadatas) * args.n_samples,
+        "total_time": total_time,
+        "avg_time_per_image": total_time / max(1, len(metadatas) * args.n_samples),
+        "executed_steps_report_path": executed_steps_report_path,
+        "executed_steps_summary": executed_steps_summary,
+        "timestamp": timestamp,
+    }
+    with open(os.path.join(output_dir, "generation_params.json"), "w", encoding="utf-8") as f:
+        json.dump(params, f, indent=4)
+    print(f"done -> {output_dir}")
+    print("OUTPUT_DIR_FINAL=" + os.path.abspath(output_dir), flush=True)
+
+
+if __name__ == "__main__":
+    main(get_args_parser().parse_args())

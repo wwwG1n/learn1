@@ -1,0 +1,52 @@
+[
+    {
+        "system_prompt": "You are a multimodal model that can process both text and images. Answer the following question based on the provided images. Analyze each image and combine relevant details to answer.",
+        "user_prompt": "Explain the image's various components in depth.",
+        "user_image": "code-producted/image/files/2524000.pkl",
+        "answer_text": "The image captures a delightful meal set on a black table. The centerpiece is a white plate, which holds a variety of food items. On the left side of the plate, there's a bowl filled with scrambled eggs, their yellow hue contrasting beautifully with the white of the bowl. \n\nOn the right side of the plate, you can see a salad made up of fresh green leaves and slices of ripe tomatoes. The colors of the salad are vibrant, adding to the overall appeal of the meal.\n\nTwo pieces of toast rest on the edge of the plate, their golden-brown crusts suggesting they've been toasted to perfection. \n\nIn the background, there's a glass of water, its clear liquid reflecting the light. A fork is also present, ready to be used to enjoy this delicious meal.\n\nOverall, the image presents a well-balanced and appetizing meal, with each component carefully arranged for visual appeal as well as taste.",
+        "answer_image": "",
+        "answer_thinking": "",
+        "id": 2524000,
+        "len": 1200
+    },
+    {
+        "system_prompt": "You are a multimodal model that can process both text and images. Answer the following question based on the provided images. Analyze each image and combine relevant details to answer.",
+        "user_prompt": "The following are multi-choice questions. Please give the correct answer directly.\n\nQuestion: Below is a food web from Shenandoah National Park, a forest ecosystem in Virginia.\nA food web models how the matter eaten by organisms moves through an ecosystem. The arrows in a food web represent how matter moves between organisms in an ecosystem.\n\nWhich of the following organisms is the tertiary consumer in this food web?\nA. beaver\nB. swallowtail caterpillar\nC. bobcat\nD. pine vole\nAnswer: ",
+        "user_image": "code-producted/image/files/219906.pkl",
+        "answer_text": "C. bobcat",
+        "answer_image": "",
+        "answer_thinking": "",
+        "id": 219906,
+        "len": 1457
+    },
+    {
+        "system_prompt": "You are a multimodal model that can process both text and images. Answer the following question based on the provided images. Analyze each image and combine relevant details to answer.",
+        "user_prompt": "What animal is this? Answer the question using a single word or phrase.",
+        "user_image": "code-producted/image/files/3562975.pkl",
+        "answer_text": "horse",
+        "answer_image": "",
+        "answer_thinking": "",
+        "id": 3562975,
+        "len": 1200
+    },
+    {
+        "system_prompt": "You are a multimodal model that can process both text and images. Answer the following question based on the provided images. Analyze each image and combine relevant details to answer.",
+        "user_prompt": "What is the little girl pulling?",
+        "user_image": "code-producted/image/files/2527031.pkl",
+        "answer_text": "The little girl is pulling a ski, which is a type of equipment used for gliding over snow. Skis are typically attached to boots and allow the wearer to move across snowy terrain with relative ease. The act of pulling on a ski could indicate that the child is either learning to use it or is playing with it in a playful manner.",
+        "answer_image": "",
+        "answer_thinking": "",
+        "id": 2527031,
+        "len": 1008
+    },
+    {
+        "system_prompt": "You are a multimodal model that can process both text and images. Answer the following question based on the provided images. Analyze each image and combine relevant details to answer.",
+        "user_prompt": "What time does the clock show? Answer the question using a single word or phrase.",
+        "user_image": "code-producted/image/files/3661454.pkl",
+        "answer_text": "1:30",
+        "answer_image": "",
+        "answer_thinking": "",
+        "id": 3661454,
+        "len": 1200
+    },
+]
