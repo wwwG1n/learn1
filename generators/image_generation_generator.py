@@ -30,7 +30,8 @@ def generate_image(
     use_cache=False,
     cache_ratio=0.9,
     refresh_interval=5,
-    warmup_ratio=0.3
+    warmup_ratio=0.3,
+    snapshot_steps: Optional[list] = None,
 ) -> torch.LongTensor:
     """
     MaskGit parallel decoding to generate VQ tokens
@@ -73,6 +74,13 @@ def generate_image(
 
     warmup_step = int(timesteps * warmup_ratio)
     refresh_steps = torch.zeros(timesteps, dtype=torch.bool)
+    snapshot_steps = set(snapshot_steps or [])
+    snapshots = {}
+
+    def extract_vq_ids(tokens: torch.LongTensor) -> torch.LongTensor:
+        vq_ids = tokens[0, code_start:-2]
+        return vq_ids[vq_ids != newline_id].view(1, seq_len).clone()
+
     for step in range(timesteps):
         if not use_cache or step <= warmup_step or (step-warmup_step) % refresh_interval == 0:
             refresh_steps[step] = True
@@ -127,6 +135,10 @@ def generate_image(
         flat_idx = vq_mask.nonzero(as_tuple=False)[:, 1]
         x.view(-1)[flat_idx] = sampled_full.view(-1)
 
+        step_no = step + 1
+        if step_no in snapshot_steps:
+            snapshots[step_no] = extract_vq_ids(x)
+
         conf_map = torch.full_like(x, -math.inf, dtype=probs.dtype)
         conf_map.view(-1)[flat_idx] = conf.view(-1)
 
@@ -146,8 +158,9 @@ def generate_image(
             
 
     # Remove newline tokens
-    vq_ids = x[0, code_start:-2]
-    vq_ids = vq_ids[vq_ids != newline_id].view(1, seq_len)
+    vq_ids = extract_vq_ids(x)
+    if snapshot_steps:
+        return vq_ids, snapshots
     return vq_ids
 
 
