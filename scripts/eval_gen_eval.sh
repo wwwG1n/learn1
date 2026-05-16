@@ -1,23 +1,19 @@
 #!/bin/bash
-#
-# eval_gen_eval.sh — Lumina-DiMOO GenEval：lumina_dimoo 生成 + geneval 检测与汇总
-#
-# 命令示例（在仓库根目录执行）：
-#
-#   全流程（生成 + 评估）。默认生成目录前缀为 gen_eval（例如 gen_eval_lumina_dimoo_geneval_20260101_120000）：
-#     CUDA_VISIBLE_DEVICES=0 ./scripts/eval_gen_eval.sh
-#
-#   自定义输出前缀（不设则默认为 gen_eval；若不要前缀可显式置空）：
-#     GENEVAL_OUTPUT_DIR_PREFIX=exp42 CUDA_VISIBLE_DEVICES=0 ./scripts/eval_gen_eval.sh
-#     GENEVAL_OUTPUT_DIR_PREFIX= ./scripts/eval_gen_eval.sh
-#
-#   仅评估已有生成目录（跳过生成）：
-#     GENEVAL_IMAGE_DIR=output/geneval_results/gen_eval_lumina_dimoo_geneval_20260414_221351 ./scripts/eval_gen_eval.sh
-#
-#   透传非算法类运行参数给 evaluation/gen_eval/geneval_lumina_dimoo.py
-#   （例如 metadata/output_root/n_samples；采样、EN、cache 等算法超参数请在 Python 脚本默认值中维护）：
-#     GENEVAL_GEN_EXTRA_ARGS="--metadata_file prompts/evaluation_metadata.jsonl --output_root output/geneval_results" ./scripts/eval_gen_eval.sh
-#
+: '''
+简洁运行示例（在仓库根目录执行）：
+
+1. 默认全流程：生成 + GenEval 评估
+   CUDA_VISIBLE_DEVICES=0 ./scripts/eval_gen_eval.sh
+
+2. 指定输出前缀
+   CUDA_VISIBLE_DEVICES=0 GENEVAL_OUTPUT_DIR_PREFIX=exp01 ./scripts/eval_gen_eval.sh
+
+3. 只评估已有生成目录，跳过生成
+   GENEVAL_IMAGE_DIR=output/geneval_results/gen_eval_lumina_dimoo_geneval_YYYYMMDD_HHMMSS ./scripts/eval_gen_eval.sh
+
+4. 透传非算法运行参数；算法超参数统一在 evaluation/gen_eval/geneval_lumina_dimoo.py 中维护
+   CUDA_VISIBLE_DEVICES=0 GENEVAL_GEN_EXTRA_ARGS="--metadata_file prompts/evaluation_metadata.jsonl --output_root output/geneval_results --n_samples 4" ./scripts/eval_gen_eval.sh
+'''
 
 set -eo pipefail
 
