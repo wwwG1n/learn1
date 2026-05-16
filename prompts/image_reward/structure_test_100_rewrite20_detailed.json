@@ -1,0 +1,597 @@
+[
+    {
+        "id": "007135-0056",
+        "prompt": "A majestic landscape featuring a river, mountains and a forest, A small group of birds is flying in the sky, Harsh winter, very windy, There is a man walking in a deep snow, Cinematic, very, beautiful, painting, in the, style, of Lord of the rings",
+        "is_rewritten": false
+    },
+    {
+        "id": "005903-0142",
+        "prompt": "landscape photography by marc adamus, mountains with some forests, small lake in the center, fog in the background, sunrays, golden hour, high",
+        "is_rewritten": false
+    },
+    {
+        "id": "100000-0000",
+        "prompt": "A serene meadow with a tree, river, bridge, and mountains in the background under a slightly overcast sunrise sky.",
+        "is_rewritten": false,
+        "original_id": "LSS-044"
+    },
+    {
+        "id": "100000-0001",
+        "prompt": "expansive view of A fisherman sits on a bamboo raft by the riverbank, holding a fishing net, with a lantern hanging nearby. A cormorant stands on the water behind him, and the backdrop features towering karst peaks under a warm, sunset sky.",
+        "is_rewritten": true,
+        "original_id": "LSS-002",
+        "original_prompt": "A fisherman sits on a bamboo raft by the riverbank, holding a fishing net, with a lantern hanging nearby. A cormorant stands on the water behind him, and the backdrop features towering karst mountains under a warm, sunset sky."
+    },
+    {
+        "id": "100000-0002",
+        "prompt": "atmospheric scene of A panoramic view of a coastal vista, with rocky cliffs, crashing waves, and a dramatic sunset artwork the sky in warm hues.",
+        "is_rewritten": true,
+        "original_id": "LSS-009",
+        "original_prompt": "A panoramic view of a coastal landscape, with rocky cliffs, crashing waves, and a dramatic sunset painting the sky in warm hues."
+    },
+    {
+        "id": "100000-0003",
+        "prompt": "A landscape featuring mountains, a valley, sunset light, wildlife and a gorilla, reminiscent of Bob Ross's artwork.",
+        "is_rewritten": false,
+        "original_id": "LSS-048"
+    },
+    {
+        "id": "007209-0011",
+        "prompt": "photo by josh pierce and prateek vatash and roman bratschi, a giant huge beautiful mid - century modern revival mansion palace with green plants and giant reflective windows on a huge scenic cliff overlooking the ocean, reflections, lighting and shadows, haze, light",
+        "is_rewritten": false
+    },
+    {
+        "id": "007726-0050",
+        "prompt": "fancy treehouse mansion on top of a mountain overlooking a view of the valley magical realism detailed painting",
+        "is_rewritten": false
+    },
+    {
+        "id": "100000-0004",
+        "prompt": "A serene mountain lake surrounded by lush green forests under a clear blue sky.",
+        "is_rewritten": false,
+        "original_id": "LSS-004"
+    },
+    {
+        "id": "100000-0005",
+        "prompt": "An Albert Bierstadt landscape painting featuring mountains, lakes, and a McDonald's restaurant.",
+        "is_rewritten": false,
+        "original_id": "LSS-030"
+    },
+    {
+        "id": "100000-0006",
+        "prompt": "A spring landscape painting featuring a treeless mountain village with melting lake ice, winding stone steps, and fog.",
+        "is_rewritten": false,
+        "original_id": "LSS-027"
+    },
+    {
+        "id": "100000-0007",
+        "prompt": "sweeping, The fifth circle of hell with a vivid, angry red sky and demons flying overhead in a striking vista.",
+        "is_rewritten": true,
+        "original_id": "LSS-053",
+        "original_prompt": "The fifth circle of hell with a vivid, angry red sky and demons flying overhead in a dramatic landscape."
+    },
+    {
+        "id": "100000-0008",
+        "prompt": "A detailed, realistic image of a lush green valley with a winding river and scattered wildflowers under a bright blue sky.",
+        "is_rewritten": false,
+        "original_id": "LSS-008"
+    },
+    {
+        "id": "100000-0009",
+        "prompt": "sweeping panorama of A edifice in a wide-angle, view by Ivan Aivazovsky.",
+        "is_rewritten": true,
+        "original_id": "LSS-032",
+        "original_prompt": "A building in a landscape by Ivan Aivazovsky."
+    },
+    {
+        "id": "100000-0010",
+        "prompt": "epic composition of Oil painting portrait of a young woman dancing through a field of flowers at sunset with highlands in the background.",
+        "is_rewritten": true,
+        "original_id": "LSS-036",
+        "original_prompt": "Oil painting portrait of a young woman dancing through a field of flowers at sunset with mountains in the background."
+    },
+    {
+        "id": "100000-0011",
+        "prompt": "A landscape painting of a China mountain village with a turbulent blood lake.",
+        "is_rewritten": false,
+        "original_id": "LSS-049"
+    },
+    {
+        "id": "100000-0012",
+        "prompt": "A landscape painting of a China mountain village with a turbulent blood lake.",
+        "is_rewritten": false,
+        "original_id": "LSS-056"
+    },
+    {
+        "id": "100000-0013",
+        "prompt": "epic composition of A Chinese wuxia walks on stone steps towards a stone gate leading to a dark cave in a breathtaking view canvas showing a temple, a turbulent lake, waterfall, fog, and a single rainbow.",
+        "is_rewritten": true,
+        "original_id": "LSS-074",
+        "original_prompt": "A Chinese wuxia walks on stone steps towards a stone gate leading to a dark cave in a beautiful landscape painting featuring a temple, a turbulent lake, waterfall, fog, and a single rainbow."
+    },
+    {
+        "id": "100000-0014",
+        "prompt": "A serene nighttime cityscape of Tokyo with lake reflections, fruit trees, and animals in the foreground.",
+        "is_rewritten": false,
+        "original_id": "LSS-086"
+    },
+    {
+        "id": "008866-0195",
+        "prompt": "natural suburb with multiple low rise apartment buildings in a park like setting with green hilly lawns and lush trees, pine wooden walls, rustic, large glass windows, cobblestone, grass, white, natural pathways, natural materials, minimalist, swedish design, bright, feng shui, modern, technology, frank lloyd wright",
+        "is_rewritten": false
+    },
+    {
+        "id": "100000-0015",
+        "prompt": "A high-resolution photograph of a mountain range with snow-capped peaks and a serene lake in the foreground, bathed in soft morning light.",
+        "is_rewritten": false,
+        "original_id": "LSS-007"
+    },
+    {
+        "id": "100000-0016",
+        "prompt": "The ancient Chinese landscape with a mountain, waterfalls, willow trees, and arch bridges set against a blue background.",
+        "is_rewritten": false,
+        "original_id": "LSS-043"
+    },
+    {
+        "id": "100000-0017",
+        "prompt": "Sunset over a mountain with misty waterfall cascades and god rays, creating an otherworldly, mattepainting-like atmosphere.",
+        "is_rewritten": false,
+        "original_id": "LSS-046"
+    },
+    {
+        "id": "005937-0167",
+        "prompt": "a painting of an ocean with clouds and birds, day, depth, field",
+        "is_rewritten": false
+    },
+    {
+        "id": "007202-0104",
+        "prompt": "futuristic city street where it is raining, a row of shops including a mcdonalds are all abandoned and vandalised windows are broken, dark lighting with storm clouds",
+        "is_rewritten": false
+    },
+    {
+        "id": "011041-0080",
+        "prompt": "cinematic movie scene, beautiful Product shot film still of a Syd Mead futuristic modern sleek automobile speeding down a wet street at night in cyperpunk city, motion, hard surface modeling, soft, style of Stanley Kubrick cinematography",
+        "is_rewritten": false
+    },
+    {
+        "id": "100000-0018",
+        "prompt": "A detailed landscape photograph of a desert with vast sand dunes, clear skies, and a solitary cactus standing tall in the distance.",
+        "is_rewritten": false,
+        "original_id": "LSS-012"
+    },
+    {
+        "id": "100000-0019",
+        "prompt": "atmospheric scene of A illustration of a cityscape with a red cloud shining light over a sea and bridge, by Greg Rutkowski and Thomas Kinkade.",
+        "is_rewritten": true,
+        "original_id": "LSS-021",
+        "original_prompt": "A painting of a cityscape with a red cloud shining light over a sea and bridge, by Greg Rutkowski and Thomas Kinkade."
+    },
+    {
+        "id": "100000-0020",
+        "prompt": "epic composition of A Japanese poster depicts a dragon soaring over a stormy wide-angle, sea amidst thunder with cliffs and clouds in the backdrop.",
+        "is_rewritten": true,
+        "original_id": "LSS-023",
+        "original_prompt": "A Japanese poster depicts a dragon soaring over a stormy sea amidst thunder with cliffs and clouds in the backdrop."
+    },
+    {
+        "id": "100000-0021",
+        "prompt": "epic composition of A serene view depicting a garden of Eden with pond reflections, fruit trees, and animals, captured in vivid and psychedelic style.",
+        "is_rewritten": true,
+        "original_id": "LSS-052",
+        "original_prompt": "A serene landscape depicting a garden of Eden with lake reflections, fruit trees, and animals, captured in vivid and psychedelic style."
+    },
+    {
+        "id": "100000-0022",
+        "prompt": "A red-clouded morning sky over a city and bridge, reflecting on a sea below.",
+        "is_rewritten": false,
+        "original_id": "LSS-065"
+    },
+    {
+        "id": "100000-0023",
+        "prompt": "A cobblestone street with a tree over the sea at sunset, illuminated by sun rays, in a colorful illustration by Peter Chan on Artstation., sweeping",
+        "is_rewritten": true,
+        "original_id": "LSS-068",
+        "original_prompt": "A cobblestone street with a tree over the sea at sunset, illuminated by sun rays, in a colorful illustration by Peter Chan on Artstation."
+    },
+    {
+        "id": "100000-0024",
+        "prompt": "A girl standing on a mountain looking out at an approaching storm over the ocean, with wind blowing and ocean mist, surrounded by lightning.",
+        "is_rewritten": false,
+        "original_id": "LSS-080"
+    },
+    {
+        "id": "008173-0073",
+        "prompt": "small red wooden cottage by the lake, lanterns on the porch, smoke coming out of the chimney, dusk, birch trees, tranquility, two swans swimming on the lake, a wooden rowing boat, cumulus clouds, by charlie bowater, by greg rutkowski",
+        "is_rewritten": false
+    },
+    {
+        "id": "008707-0095",
+        "prompt": "aerial photography forest",
+        "is_rewritten": false
+    },
+    {
+        "id": "007086-0087",
+        "prompt": "an alien planet viewed from space, extremely, beautiful, dynamic, creative, cinematic, expansive",
+        "is_rewritten": true,
+        "original_prompt": "an alien planet viewed from space, extremely, beautiful, dynamic, creative, cinematic"
+    },
+    {
+        "id": "008317-0143",
+        "prompt": "a beautiful cyborg mermaid with a long fish tail, the body has shimmering fish scales, submerged underwater, dark ocean, light filtering through, the body is entwined in seaweed and coral, highly detailed, hyper - realistic, futuristic",
+        "is_rewritten": false
+    },
+    {
+        "id": "100000-0025",
+        "prompt": "A group of white horses gallops through shallow water under a dramatic sky, creating splashes as they move. The scene is bathed in warm, golden light, highlighting the horses' graceful motion.",
+        "is_rewritten": false,
+        "original_id": "LSS-001"
+    },
+    {
+        "id": "100000-0026",
+        "prompt": "A snowy mountain peak with a clear path leading through a pine forest.",
+        "is_rewritten": false,
+        "original_id": "LSS-006"
+    },
+    {
+        "id": "100000-0027",
+        "prompt": "A serene countryside scene with rolling hills, a clear blue sky, and a rustic farmhouse surrounded by blooming trees.",
+        "is_rewritten": false,
+        "original_id": "LSS-010"
+    },
+    {
+        "id": "100000-0028",
+        "prompt": "An artwork featuring a person standing in a field with a large tree and black hexagonal clouds in the blue sky, created by artist Simon Stalenhag.",
+        "is_rewritten": false,
+        "original_id": "LSS-041"
+    },
+    {
+        "id": "100000-0029",
+        "prompt": "An oil painting of a tall waterfall on a rocky cliff within a forest of trees with glowing blue leaves.",
+        "is_rewritten": false,
+        "original_id": "LSS-042"
+    },
+    {
+        "id": "100000-0030",
+        "prompt": "A peaceful, nature-filled landscape with vibrant flowers and trees and a serene cloud-filled sky.",
+        "is_rewritten": false,
+        "original_id": "LSS-092"
+    },
+    {
+        "id": "007206-0148",
+        "prompt": "mountains range with waterfall, purple haze, art by greg rutkowski and magali villeneuve",
+        "is_rewritten": false
+    },
+    {
+        "id": "007258-0005",
+        "prompt": "desert, art by joseph, leyendecker, peter mohrbacher, ivan aivazovsky, ruan jia, reza afshar, marc simonetti",
+        "is_rewritten": false
+    },
+    {
+        "id": "007178-0111",
+        "prompt": "alien landscape with futuristic portal to another alien planet, astronaut stepping through the portal",
+        "is_rewritten": false
+    },
+    {
+        "id": "007249-0011",
+        "prompt": "futuristic spaceship escaping event horizon of black hole, by rossdraws, by marc simonetti, by matt rutkowski, dystopian lost in space, nebula, supernova, exploding galaxy, micro detail, fantasy",
+        "is_rewritten": false
+    },
+    {
+        "id": "100000-0031",
+        "prompt": "A beautiful blue and pink sky overlooking the beach.",
+        "is_rewritten": false,
+        "original_id": "LSS-015"
+    },
+    {
+        "id": "100000-0032",
+        "prompt": "An empty road with buildings on each side.",
+        "is_rewritten": false,
+        "original_id": "LSS-016"
+    },
+    {
+        "id": "100000-0033",
+        "prompt": "A bridge connecting Europe and North America on the Atlantic Ocean, bird's eye view.",
+        "is_rewritten": false,
+        "original_id": "LSS-017"
+    },
+    {
+        "id": "100000-0034",
+        "prompt": "New York Skyline with 'Hello World' written with fireworks on the sky.",
+        "is_rewritten": false,
+        "original_id": "LSS-019"
+    },
+    {
+        "id": "100000-0035",
+        "prompt": "Matte painting of spaceship earth at Epcot at sunset, surrounded by torches designed by Frank Lloyd Wright and Zaha Hadid.",
+        "is_rewritten": false,
+        "original_id": "LSS-029"
+    },
+    {
+        "id": "100000-0036",
+        "prompt": "A solar eclipse is depicted over a field of grass and flowers with a small forest in the distance, as a matte painting on Art Station by Simon Stalenhag.",
+        "is_rewritten": false,
+        "original_id": "LSS-060"
+    },
+    {
+        "id": "100000-0037",
+        "prompt": "Sunset over a mountain with misty waterfall cascades and god rays.",
+        "is_rewritten": false,
+        "original_id": "LSS-066"
+    },
+    {
+        "id": "100000-0038",
+        "prompt": "atmospheric scene of A train crosses a trestle bridge in the peaks in an optimistic and vibrant illustration.",
+        "is_rewritten": true,
+        "original_id": "LSS-071",
+        "original_prompt": "A train crosses a trestle bridge in the mountains in an optimistic and vibrant illustration."
+    },
+    {
+        "id": "100000-0039",
+        "prompt": "A sunset panorama showing a graveyard of souls, with backlight and painted by Frazetta.",
+        "is_rewritten": false,
+        "original_id": "LSS-079"
+    },
+    {
+        "id": "100000-0040",
+        "prompt": "A picturesque medieval hobbit home surrounded by lush forest features a bridge over a creek, a chimney emitting smoke, a waterfall in the background and flowers.",
+        "is_rewritten": false,
+        "original_id": "LSS-083"
+    },
+    {
+        "id": "100000-0041",
+        "prompt": "A colorful illustration by Peter Chan featuring a green field with flowers, pink and yellow clouds at sunset.",
+        "is_rewritten": false,
+        "original_id": "LSS-085"
+    },
+    {
+        "id": "100000-0042",
+        "prompt": "A train crossing a trestle bridge in the mountains.",
+        "is_rewritten": false,
+        "original_id": "LSS-089"
+    },
+    {
+        "id": "100000-0043",
+        "prompt": "The castle surrounded by a dreamy garden with roses and a cloudy sky in the background.",
+        "is_rewritten": false,
+        "original_id": "LSS-094"
+    },
+    {
+        "id": "009639-0195",
+        "prompt": "the sea, sunset, colorful, clear water, digital",
+        "is_rewritten": false
+    },
+    {
+        "id": "007019-0095",
+        "prompt": "astronaut drifting afloat in space, in the darkness away from anyone else, alone, black background dotted with stars, realistic",
+        "is_rewritten": false
+    },
+    {
+        "id": "100000-0044",
+        "prompt": "A rustic wooden bridge crosses over a calm river surrounded by lush greenery and trees with autumn-colored leaves.",
+        "is_rewritten": false,
+        "original_id": "LSS-003"
+    },
+    {
+        "id": "100000-0045",
+        "prompt": "A golden sunset over a sandy beach with gentle waves and scattered seashells.",
+        "is_rewritten": false,
+        "original_id": "LSS-005"
+    },
+    {
+        "id": "100000-0046",
+        "prompt": "grand vista of A realistic depiction of a dense forest during autumn, with vibrant foliage, panoramic, sun rays piercing through the canopy, and a carpet of fallen leaves.",
+        "is_rewritten": true,
+        "original_id": "LSS-011",
+        "original_prompt": "A realistic depiction of a dense forest during autumn, with vibrant foliage, sun rays piercing through the canopy, and a carpet of fallen leaves."
+    },
+    {
+        "id": "100000-0047",
+        "prompt": "Beige canvas tents set up in an arctic landscape with no vegetation, surrounded by rolling hills - reminiscent of a romanticist painting.",
+        "is_rewritten": false,
+        "original_id": "LSS-028"
+    },
+    {
+        "id": "100000-0048",
+        "prompt": "A Landrover crosses a forest path in the rain in a highly-detailed digital painting by artists Greg Rutkowski and Artgerm.",
+        "is_rewritten": false,
+        "original_id": "LSS-034"
+    },
+    {
+        "id": "100000-0049",
+        "prompt": "A glowing dry tree stands alone under a starry sky in a detailed fantasy artwork by Greg Rutsowski.",
+        "is_rewritten": false,
+        "original_id": "LSS-035"
+    },
+    {
+        "id": "100000-0050",
+        "prompt": "Friends splashing in the ocean in a fantasy digital painting by Makoto Shinkai and James Gurney.",
+        "is_rewritten": false,
+        "original_id": "LSS-037"
+    },
+    {
+        "id": "100000-0051",
+        "prompt": "wide-angle, A night scene of a lavender field with a town and church in the background, reminiscent of Vincent van Gogh's style.",
+        "is_rewritten": true,
+        "original_id": "LSS-057",
+        "original_prompt": "A night scene of a lavender field with a town and church in the background, reminiscent of Vincent van Gogh's style."
+    },
+    {
+        "id": "100000-0052",
+        "prompt": "The huge cat beside a small house, amidst wheat field harvesting, with a large tree, under a blue sky, in a Simon Stalenhag matte painting on Art Station.",
+        "is_rewritten": false,
+        "original_id": "LSS-062"
+    },
+    {
+        "id": "100000-0053",
+        "prompt": "grand vista of A Victorian woman quietly sings by a lake at night encompassed by fireflies, moon, and stars, painted by Vincent van Gogh and Jacques-Louis David.",
+        "is_rewritten": true,
+        "original_id": "LSS-069",
+        "original_prompt": "A Victorian woman quietly sings by a lake at night surrounded by fireflies, moon, and stars, painted by Vincent van Gogh and Jacques-Louis David."
+    },
+    {
+        "id": "100000-0054",
+        "prompt": "A cottage designed by Salvador Dali is surrounded by blooming forest, with a nearby stream in spring.",
+        "is_rewritten": false,
+        "original_id": "LSS-072"
+    },
+    {
+        "id": "100000-0055",
+        "prompt": "A fantasy matte painting of Link from Zelda in a forest during autumn with sun rays and dust.",
+        "is_rewritten": false,
+        "original_id": "LSS-078"
+    },
+    {
+        "id": "007171-0040",
+        "prompt": "A foggy forest with cherry blossom leaves on the ground, liminal, quiet",
+        "is_rewritten": false
+    },
+    {
+        "id": "011729-0165",
+        "prompt": "roman temple ruin, soft grey and blue organic light, crepuscular rays, intricate, digital picture, illustration, art by greg rutkowski and luis rollo and uang guangjian and gil elvgren, symmetry, epic scale",
+        "is_rewritten": true,
+        "original_prompt": "roman temple ruin, soft grey and blue natural light, crepuscular rays, intricate, digital painting, illustration, art by greg rutkowski and luis rollo and uang guangjian and gil elvgren, symmetry"
+    },
+    {
+        "id": "100000-0056",
+        "prompt": "A blue airplane in a blue, cloudless sky",
+        "is_rewritten": false,
+        "original_id": "LSS-013"
+    },
+    {
+        "id": "100000-0057",
+        "prompt": "sweeping, An airplane flying past the Moon in the sky.",
+        "is_rewritten": true,
+        "original_id": "LSS-014",
+        "original_prompt": "An airplane flying past the Moon in the sky."
+    },
+    {
+        "id": "100000-0058",
+        "prompt": "New York Skyline with 'Diffusion' written with fireworks on the sky.",
+        "is_rewritten": false,
+        "original_id": "LSS-020"
+    },
+    {
+        "id": "100000-0059",
+        "prompt": "A symmetrical oil painting of two waterfalls in a dense forest.",
+        "is_rewritten": false,
+        "original_id": "LSS-022"
+    },
+    {
+        "id": "100000-0060",
+        "prompt": "A Chinese temple with a lone monk walking on winding steps and three red crowned cranes in the water.",
+        "is_rewritten": false,
+        "original_id": "LSS-024"
+    },
+    {
+        "id": "100000-0061",
+        "prompt": "Colorful illustration of a grove tunnel illuminated by sunlight and filled with wildflowers., atmospheric",
+        "is_rewritten": true,
+        "original_id": "LSS-026",
+        "original_prompt": "Colorful illustration of a forest tunnel illuminated by sunlight and filled with wildflowers."
+    },
+    {
+        "id": "100000-0062",
+        "prompt": "Swedish lake at night with heavy snowfall depicted in hyper-realistic and detailed art.",
+        "is_rewritten": false,
+        "original_id": "LSS-040"
+    },
+    {
+        "id": "100000-0063",
+        "prompt": "A painting depicting a scenic view of Guangzhou, China as a tourist destination by David Inshaw.",
+        "is_rewritten": false,
+        "original_id": "LSS-047"
+    },
+    {
+        "id": "100000-0064",
+        "prompt": "A deserted garden painting featuring roses, trees, and a waterfall, created by Simon Stålenhag on ArtStation.",
+        "is_rewritten": false,
+        "original_id": "LSS-054"
+    },
+    {
+        "id": "100000-0065",
+        "prompt": "A dystopian future city with a nuclear fallout, created through a matte painting with Octane Render.",
+        "is_rewritten": false,
+        "original_id": "LSS-063"
+    },
+    {
+        "id": "100000-0066",
+        "prompt": "grand vista of A green vista vast, by Makoto Shinkai.",
+        "is_rewritten": true,
+        "original_id": "LSS-067",
+        "original_prompt": "A green landscape by Makoto Shinkai."
+    },
+    {
+        "id": "100000-0067",
+        "prompt": "A lantern floats in a dark river at night in an artwork by Thomas Kinkade.",
+        "is_rewritten": false,
+        "original_id": "LSS-070"
+    },
+    {
+        "id": "100000-0068",
+        "prompt": "Autumn birch forest with falling leaves resembling flying butterflies and dancing elves.",
+        "is_rewritten": false,
+        "original_id": "LSS-073"
+    },
+    {
+        "id": "100000-0069",
+        "prompt": "A deep retro scifi cave with dramatic cinematic composition and beautiful lighting, portrayed in a desaturated and psychedelic oil on canvas masterpiece by artists Tim Hildebrandt, Wayne Barlowe, Bruce Pennington, Donato Giancola, and Larry Elmore, trending on Artstation and featured on Pixiv.",
+        "is_rewritten": false,
+        "original_id": "LSS-076"
+    },
+    {
+        "id": "100000-0070",
+        "prompt": "Medieval landscape of a Kievan Rus army with Tzars and flags.",
+        "is_rewritten": false,
+        "original_id": "LSS-077"
+    },
+    {
+        "id": "100000-0071",
+        "prompt": "A painting of a cyberpunk skyscraper with floral ornaments by Andreas Achenbach.",
+        "is_rewritten": false,
+        "original_id": "LSS-081"
+    },
+    {
+        "id": "100000-0072",
+        "prompt": "A woman in golden robes walks on the ocean amidst god rays and vibrant colors.",
+        "is_rewritten": false,
+        "original_id": "LSS-084"
+    },
+    {
+        "id": "100000-0073",
+        "prompt": "A painting by Rembrandt depicting a dark, stormy night at sea with large waves and a small pneumatic boat carrying illegal immigrants.",
+        "is_rewritten": false,
+        "original_id": "LSS-091"
+    },
+    {
+        "id": "100000-0074",
+        "prompt": "expansive view of A woman and her dog sit on a tree and watch the sunset in a digital illustration by artgerm, greg rutkowski, and Alphonse Mucha.",
+        "is_rewritten": true,
+        "original_id": "LSS-095",
+        "original_prompt": "A woman and her dog sit on a tree and watch the sunset in a digital painting by artgerm, greg rutkowski, and Alphonse Mucha."
+    },
+    {
+        "id": "001737-0018",
+        "prompt": "a car chilling on the beach, sunset",
+        "is_rewritten": false
+    },
+    {
+        "id": "001230-0030",
+        "prompt": "beautiful rainbow clouds, oil painting",
+        "is_rewritten": false
+    },
+    {
+        "id": "008251-0021",
+        "prompt": "view from earth atmosphere to the stars sci fi",
+        "is_rewritten": false
+    },
+    {
+        "id": "005784-0093",
+        "prompt": "desolate space, 4, octane, beautifully, epic, magical, cinematic, masterpiece",
+        "is_rewritten": false
+    },
+    {
+        "id": "000246-0117",
+        "prompt": "surface of an alien planet",
+        "is_rewritten": false
+    }
+]
