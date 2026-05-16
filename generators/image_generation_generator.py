@@ -32,6 +32,9 @@ def generate_image(
     refresh_interval=5,
     warmup_ratio=0.3,
     snapshot_steps: Optional[list] = None,
+    en_region_steps: Optional[list] = None,
+    en_region_snapshot_steps: Optional[list] = None,
+    en_region_label_callback: Optional[Callable[[dict], object]] = None,
 ) -> torch.LongTensor:
     """
     MaskGit parallel decoding to generate VQ tokens
@@ -52,6 +55,9 @@ def generate_image(
         noise_schedule: Noise schedule function
         text_vocab_size: Text vocabulary size
         generator: Random number generator
+        en_region_steps: Remaining sampling steps for EN labels 0/1/2
+        en_region_snapshot_steps: Zero-based snapshot steps used to compute EN labels
+        en_region_label_callback: Callback that receives snapshots and returns EN labels
     
     Returns:
         Final VQ codes (1, seq_len)
@@ -76,10 +82,83 @@ def generate_image(
     refresh_steps = torch.zeros(timesteps, dtype=torch.bool)
     snapshot_steps = set(snapshot_steps or [])
     snapshots = {}
+    en_region_labels = None
+    en_region_base_step = None
+    en_region_initial_counts = None
+
+    if en_region_steps is not None:
+        if len(en_region_steps) != 3:
+            raise ValueError(f"en_region_steps must contain 3 integers, got {en_region_steps}")
+        en_region_steps = [int(step_count) for step_count in en_region_steps]
+        if any(step_count < 0 for step_count in en_region_steps):
+            raise ValueError(f"en_region_steps must be non-negative, got {en_region_steps}")
+        if en_region_snapshot_steps is None or len(en_region_snapshot_steps) != 2:
+            raise ValueError("en_region_snapshot_steps must contain the two zero-based EN snapshot steps")
+        en_region_snapshot_steps = [int(step_no) for step_no in en_region_snapshot_steps]
+        if en_region_snapshot_steps[1] <= en_region_snapshot_steps[0]:
+            raise ValueError(f"EN snapshot steps must be increasing, got {en_region_snapshot_steps}")
+        if en_region_snapshot_steps[1] + max(en_region_steps) >= timesteps:
+            raise ValueError(
+                "timesteps is too small for EN region schedule: "
+                f"step{en_region_snapshot_steps[1]} + max({en_region_steps}) must be <= step{timesteps - 1}"
+            )
+        if en_region_label_callback is None:
+            raise ValueError("en_region_label_callback is required when en_region_steps is set")
 
     def extract_vq_ids(tokens: torch.LongTensor) -> torch.LongTensor:
         vq_ids = tokens[0, code_start:-2]
         return vq_ids[vq_ids != newline_id].view(1, seq_len).clone()
+
+    position_to_vq = None
+    if en_region_steps is not None:
+        image_positions = torch.arange(code_start, x.size(1) - 2, device=device)
+        vq_positions = image_positions[x[0, code_start:-2] != newline_id]
+        if vq_positions.numel() != seq_len:
+            raise ValueError(f"Expected {seq_len} VQ token positions, got {vq_positions.numel()}")
+        position_to_vq = torch.full((x.size(1),), -1, dtype=torch.long, device=device)
+        position_to_vq[vq_positions] = torch.arange(seq_len, dtype=torch.long, device=device)
+
+    def select_region_masks(
+        flat_idx: torch.LongTensor,
+        conf: torch.Tensor,
+        *,
+        step: int,
+    ) -> torch.BoolTensor:
+        current_region_labels = en_region_labels[position_to_vq[flat_idx]]
+        local_step = step - en_region_base_step
+        mask_sel_flat = torch.zeros(flat_idx.numel(), dtype=torch.bool, device=device)
+
+        for region_id, region_step_count in enumerate(en_region_steps):
+            region_positions = (current_region_labels == region_id).nonzero(as_tuple=False).view(-1)
+            region_unknown_count = region_positions.numel()
+            if region_unknown_count == 0:
+                continue
+
+            if region_step_count <= 0 or local_step >= region_step_count:
+                keep_count = 0
+            else:
+                frac = math.cos(0.5 * math.pi * (local_step / region_step_count))
+                keep_count = int(math.floor(int(en_region_initial_counts[region_id].item()) * frac))
+                keep_count = max(1, keep_count)
+                keep_count = min(keep_count, region_unknown_count)
+
+            if keep_count <= 0:
+                continue
+            if keep_count >= region_unknown_count:
+                mask_sel_flat[region_positions] = True
+                continue
+
+            region_conf = conf[:, region_positions]
+            keep_tensor = torch.tensor([keep_count], dtype=torch.long, device=device)
+            region_mask = mask_by_random_topk(
+                keep_tensor,
+                region_conf,
+                temperature=temperature,
+                generator=generator,
+            ).view(-1)
+            mask_sel_flat[region_positions[region_mask]] = True
+
+        return mask_sel_flat.view(1, -1)
 
     for step in range(timesteps):
         if not use_cache or step <= warmup_step or (step-warmup_step) % refresh_interval == 0:
@@ -135,17 +214,40 @@ def generate_image(
         flat_idx = vq_mask.nonzero(as_tuple=False)[:, 1]
         x.view(-1)[flat_idx] = sampled_full.view(-1)
 
-        step_no = step + 1
-        if step_no in snapshot_steps:
-            snapshots[step_no] = extract_vq_ids(x)
+        if step in snapshot_steps:
+            snapshots[step] = extract_vq_ids(x)
 
-        conf_map = torch.full_like(x, -math.inf, dtype=probs.dtype)
-        conf_map.view(-1)[flat_idx] = conf.view(-1)
-
-        mask_sel = mask_by_random_topk(keep_n.squeeze(1), conf, temperature=temperature, generator=generator)
+        if en_region_labels is not None and step > en_region_base_step:
+            mask_sel = select_region_masks(flat_idx, conf, step=step)
+        else:
+            mask_sel = mask_by_random_topk(keep_n.squeeze(1), conf, temperature=temperature, generator=generator)
         x.view(-1)[flat_idx[mask_sel.view(-1)]] = mask_token_id
         vq_mask = x == mask_token_id
         unknown_cnt = vq_mask.sum(dim=1, keepdim=True)
+
+        if (
+            en_region_steps is not None
+            and en_region_labels is None
+            and step == en_region_snapshot_steps[1]
+        ):
+            missing_steps = [step_no for step_no in en_region_snapshot_steps if step_no not in snapshots]
+            if missing_steps:
+                raise RuntimeError(f"EN snapshots were not captured for steps {missing_steps}")
+
+            labels = en_region_label_callback(snapshots)
+            en_region_labels = torch.as_tensor(labels, dtype=torch.long, device=device).view(-1)
+            if en_region_labels.numel() != seq_len:
+                raise ValueError(
+                    f"EN labels must contain {seq_len} tokens, got {en_region_labels.numel()}"
+                )
+            if en_region_labels.min().item() < 0 or en_region_labels.max().item() > 2:
+                raise ValueError("EN labels must use values 0, 1, and 2")
+
+            current_flat_idx = vq_mask.nonzero(as_tuple=False)[:, 1]
+            current_vq_idx = position_to_vq[current_flat_idx]
+            current_labels = en_region_labels[current_vq_idx]
+            en_region_initial_counts = torch.bincount(current_labels, minlength=3)[:3].long()
+            en_region_base_step = step
 
         if use_cache and step < timesteps - 1 and not refresh_steps[step+1]:
             cond_conf = cond_logits.max(dim=-1)[0]

@@ -197,10 +197,11 @@ def en_binary_segmentation(
     image_b: Image.Image,
     *,
     threshold: float = THRESHOLD,
+    grid_size: Tuple[int, int] = GRID_SIZE,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Return ``(mask, token_scores)`` for EN binary segmentation."""
     u_pix = _pixel_non_convergence(image_a, image_b)
-    scores = _token_scores(u_pix, GRID_SIZE, POOL_PERCENTILE)
+    scores = _token_scores(u_pix, grid_size, POOL_PERCENTILE)
     labels = (scores >= threshold).astype(np.uint8)
     labels = _repair_small_e_islands(labels, AREA_MAX, MAX_ITER)
     labels = _block_finalize(labels, BLOCK_SIZE)
@@ -213,12 +214,13 @@ def en_tristate_segmentation(
     *,
     threshold_low: float,
     threshold_high: float,
+    grid_size: Tuple[int, int] = GRID_SIZE,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Return ``(labels, token_scores)`` with 0=converged, 1=near-converged, 2=non-converged."""
     if threshold_high <= threshold_low:
         raise ValueError(f"threshold_high must be larger than threshold_low, got {threshold_low}, {threshold_high}")
     u_pix = _pixel_non_convergence(image_a, image_b)
-    scores = _token_scores(u_pix, GRID_SIZE, POOL_PERCENTILE)
+    scores = _token_scores(u_pix, grid_size, POOL_PERCENTILE)
     labels = np.zeros_like(scores, dtype=np.uint8)
     labels[(scores >= threshold_low) & (scores <= threshold_high)] = 1
     labels[scores > threshold_high] = 2

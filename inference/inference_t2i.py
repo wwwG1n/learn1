@@ -3,11 +3,10 @@
 Text-to-image inference script
 """
 import os
-import json
 import argparse
 import time
 import torch
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoTokenizer
 from PIL import Image
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -16,7 +15,7 @@ from config import SPECIAL_TOKENS
 from model import LLaDAForMultiModalGeneration
 from utils.generation_utils import setup_seed
 from utils.image_utils import decode_vq_to_image, calculate_vq_params, add_break_line, encode_img_with_paint
-from utils.en_segmentation import en_binary_segmentation, en_tristate_segmentation, save_en_overlay, save_en_tristate_overlay
+from utils.en_segmentation import en_tristate_segmentation, save_en_tristate_overlay
 from generators.image_generation_generator import generate_image
 from utils.prompt_utils import generate_text_to_image_prompt, create_prompt_templates
 
@@ -30,8 +29,58 @@ def parse_en_threshold_pair(threshold_text):
     return threshold_low, threshold_high
 
 
+def parse_en_region_steps(steps_text):
+    parts = steps_text.replace(":", ",").split(",")
+    if len(parts) != 3:
+        raise ValueError(f"EN region steps must have 3 integers for labels 0,1,2, got {steps_text!r}")
+    steps = [int(part.strip()) for part in parts]
+    if any(step_count < 0 for step_count in steps):
+        raise ValueError(f"EN region steps must be non-negative, got {steps}")
+    return steps
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Text-to-image inference")
+    parser = argparse.ArgumentParser(
+        description="Text-to-image inference",
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog="""Examples:
+  # 1) 原始 Lumina 采样：显式关闭区域独立采样
+  CUDA_VISIBLE_DEVICES=0 conda run -n lumina_dimoo python inference/inference_t2i.py \\
+    --checkpoint /mnt/data1/yanfeihong/projs/Lumina-DiMOO/weights \\
+    --vae_ckpt /mnt/data1/yanfeihong/projs/Lumina-DiMOO/weights \\
+    --prompt "a glass greenhouse filled with tropical plants at sunrise" \\
+    --height 1024 --width 1024 --timesteps 32 \\
+    --no-en_region_sampling \\
+    --output_dir debug_results/original_lumina
+
+  # 2) 只保存 EN 图：采样仍是原始 Lumina
+  CUDA_VISIBLE_DEVICES=0 conda run -n lumina_dimoo python inference/inference_t2i.py \\
+    --checkpoint /mnt/data1/yanfeihong/projs/Lumina-DiMOO/weights \\
+    --vae_ckpt /mnt/data1/yanfeihong/projs/Lumina-DiMOO/weights \\
+    --prompt "a glass greenhouse filled with tropical plants at sunrise" \\
+    --height 1024 --width 1024 --timesteps 32 \\
+    --en_heatmap --no-en_region_sampling \\
+    --output_dir debug_results/en_heatmap_only
+
+  # 3) 默认区域独立采样：不额外保存 EN 图
+  CUDA_VISIBLE_DEVICES=0 conda run -n lumina_dimoo python inference/inference_t2i.py \\
+    --checkpoint /mnt/data1/yanfeihong/projs/Lumina-DiMOO/weights \\
+    --vae_ckpt /mnt/data1/yanfeihong/projs/Lumina-DiMOO/weights \\
+    --prompt "a glass greenhouse filled with tropical plants at sunrise" \\
+    --height 1024 --width 1024 --timesteps 32 \\
+    --en_region_steps "4,12,20" \\
+    --output_dir debug_results/en_region_sampling
+
+  # 4) 默认区域独立采样，同时保存 EN 图
+  CUDA_VISIBLE_DEVICES=0 conda run -n lumina_dimoo python inference/inference_t2i.py \\
+    --checkpoint /mnt/data1/yanfeihong/projs/Lumina-DiMOO/weights \\
+    --vae_ckpt /mnt/data1/yanfeihong/projs/Lumina-DiMOO/weights \\
+    --prompt "a glass greenhouse filled with tropical plants at sunrise" \\
+    --height 1024 --width 1024 --timesteps 32 \\
+    --en_heatmap --en_region_steps "4,12,20" \\
+    --output_dir debug_results/en_region_sampling_with_heatmap
+""",
+    )
     parser.add_argument("--checkpoint", type=str, required=True, help="Fine-tuned checkpoint path")
     parser.add_argument("--prompt", type=str, required=True, help="Text prompt")
     parser.add_argument("--painting_mode", type=str, default=None, help="Inpainting for image-inpainting task & outpainting for imahe-extrapolation task")
@@ -50,11 +99,18 @@ def main():
     parser.add_argument("--cache_ratio", type=float, default=0.9, help="Ratio of reused tokens, in (0,1); the higher the faster")
     parser.add_argument("--warmup_ratio", type=float, default=0.3, help="Warmup ratio for caching, in [0,1); the lower the faster")
     parser.add_argument("--refresh_interval", type=int, default=5, help="Refresh all cache every `refresh_interval` steps, in (1, timesteps-int(warmup_ratio*timesteps)-1]; the higher the faster")
-    parser.add_argument("--en_heatmap", action="store_true", help="Save EN 10->11 segmentation visualization")
-    parser.add_argument("--en_snapshot_step", type=int, default=10, help="Earlier EN snapshot step")
-    parser.add_argument("--en_snapshot_step_b", type=int, default=11, help="Later EN snapshot step")
+    parser.add_argument("--en_heatmap", action="store_true", help="Save EN 10->11 segmentation visualization without changing sampling")
+    parser.add_argument("--en_snapshot_step", type=int, default=10, help="Zero-based earlier EN snapshot step")
+    parser.add_argument("--en_snapshot_step_b", type=int, default=11, help="Zero-based later EN snapshot step")
     parser.add_argument("--en_threshold_pair", type=str, default="0.15:0.45", help='EN tri-state thresholds, e.g. "0.15:0.45"')
     parser.add_argument("--en_alpha", type=float, default=0.45, help="Red overlay alpha for EN heatmap")
+    parser.add_argument(
+        "--en_region_sampling",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable EN region-independent sampling schedule (default: enabled; use --no-en_region_sampling for original Lumina)",
+    )
+    parser.add_argument("--en_region_steps", type=str, default="4,12,20", help="Remaining zero-based sampling steps for EN labels 0,1,2")
     
     args = parser.parse_args()
     
@@ -128,13 +184,78 @@ def main():
     start_time = time.time()
     en_snapshot_step = args.en_snapshot_step
     en_snapshot_step_b = args.en_snapshot_step_b
-    if args.en_heatmap:
+    need_en_snapshots = args.en_heatmap or args.en_region_sampling
+    if need_en_snapshots:
         if en_snapshot_step_b <= en_snapshot_step:
             raise ValueError("--en_snapshot_step_b must be later than --en_snapshot_step")
         threshold_low, threshold_high = parse_en_threshold_pair(args.en_threshold_pair)
         en_snapshot_steps = [en_snapshot_step, en_snapshot_step_b]
+        en_region_context = {}
+        if args.en_region_sampling:
+            en_region_steps = parse_en_region_steps(args.en_region_steps)
+            if en_snapshot_step_b + max(en_region_steps) >= args.timesteps:
+                raise ValueError(
+                    "--timesteps is too small for EN region sampling: "
+                    f"step{en_snapshot_step_b} + max({en_region_steps}) must be <= step{args.timesteps - 1}"
+                )
+        else:
+            en_region_steps = None
     else:
         en_snapshot_steps = []
+        en_region_steps = None
+        en_region_context = {}
+
+    def compute_en_region_labels(snapshots):
+        pair_start_time = time.time()
+        image_a = decode_vq_to_image(
+            snapshots[en_snapshot_step],
+            os.path.join(args.output_dir, "_en_step_a.png"),
+            vae_ckpt=args.vae_ckpt,
+            image_height=height,
+            image_width=width,
+            vqvae=vqvae,
+        )
+        image_b = decode_vq_to_image(
+            snapshots[en_snapshot_step_b],
+            os.path.join(args.output_dir, "_en_step_b.png"),
+            vae_ckpt=args.vae_ckpt,
+            image_height=height,
+            image_width=width,
+            vqvae=vqvae,
+        )
+
+        en_compute_start = time.time()
+        overlay_labels, _ = en_tristate_segmentation(
+            image_a,
+            image_b,
+            threshold_low=threshold_low,
+            threshold_high=threshold_high,
+            grid_size=(token_grid_height, token_grid_width),
+        )
+        en_compute_time = time.time() - en_compute_start
+
+        region_labels = overlay_labels
+
+        en_region_context.update(
+            image_a=image_a,
+            image_b=image_b,
+            overlay_labels=overlay_labels,
+            region_labels=region_labels,
+            en_compute_time=en_compute_time,
+            pair_elapsed_time=time.time() - pair_start_time,
+        )
+        return region_labels
+
+    if args.en_region_sampling:
+        finish_steps = [en_snapshot_step_b + step_count for step_count in en_region_steps]
+        print(
+            "EN region sampling: "
+            f"zero_based_snapshots=step{en_snapshot_step}->step{en_snapshot_step_b} "
+            f"region_steps={en_region_steps} finish_steps={finish_steps}"
+        )
+    else:
+        print("Sampling mode: original Lumina cosine schedule")
+
     generate_start_time = time.time()
     generation_result = generate_image(
         model,
@@ -150,9 +271,12 @@ def main():
         cache_ratio=args.cache_ratio,
         refresh_interval=args.refresh_interval,
         warmup_ratio=args.warmup_ratio,
-        snapshot_steps=en_snapshot_steps if args.en_heatmap else None,
+        snapshot_steps=en_snapshot_steps if need_en_snapshots else None,
+        en_region_steps=en_region_steps if args.en_region_sampling else None,
+        en_region_snapshot_steps=en_snapshot_steps if args.en_region_sampling else None,
+        en_region_label_callback=compute_en_region_labels if args.en_region_sampling else None,
     )
-    if args.en_heatmap:
+    if need_en_snapshots:
         vq_tokens, snapshots = generation_result
     else:
         vq_tokens = generation_result
@@ -193,32 +317,40 @@ def main():
         if en_snapshot_step_b not in snapshots:
             raise RuntimeError(f"EN snapshot step {en_snapshot_step_b} was not captured")
 
-        pair_start_time = time.time()
-        image_a = decode_vq_to_image(
-            snapshots[en_snapshot_step],
-            save_path,
-            vae_ckpt=args.vae_ckpt,
-            image_height=height,
-            image_width=width,
-            vqvae=vqvae,
-        )
-        image_b = decode_vq_to_image(
-            snapshots[en_snapshot_step_b],
-            save_path,
-            vae_ckpt=args.vae_ckpt,
-            image_height=height,
-            image_width=width,
-            vqvae=vqvae,
-        )
+        if en_region_context:
+            image_a = en_region_context["image_a"]
+            en_labels = en_region_context["overlay_labels"]
+            en_compute_time = en_region_context["en_compute_time"]
+            pair_elapsed_time = en_region_context["pair_elapsed_time"]
+        else:
+            pair_start_time = time.time()
+            image_a = decode_vq_to_image(
+                snapshots[en_snapshot_step],
+                save_path,
+                vae_ckpt=args.vae_ckpt,
+                image_height=height,
+                image_width=width,
+                vqvae=vqvae,
+            )
+            image_b = decode_vq_to_image(
+                snapshots[en_snapshot_step_b],
+                save_path,
+                vae_ckpt=args.vae_ckpt,
+                image_height=height,
+                image_width=width,
+                vqvae=vqvae,
+            )
 
-        en_compute_start = time.time()
-        en_labels, _ = en_tristate_segmentation(
-            image_a,
-            image_b,
-            threshold_low=threshold_low,
-            threshold_high=threshold_high,
-        )
-        en_compute_time = time.time() - en_compute_start
+            en_compute_start = time.time()
+            en_labels, _ = en_tristate_segmentation(
+                image_a,
+                image_b,
+                threshold_low=threshold_low,
+                threshold_high=threshold_high,
+                grid_size=(token_grid_height, token_grid_width),
+            )
+            en_compute_time = time.time() - en_compute_start
+            pair_elapsed_time = time.time() - pair_start_time
         region_counts = {
             "converged": int((en_labels == 0).sum()),
             "near_converged": int((en_labels == 1).sum()),
@@ -227,7 +359,6 @@ def main():
         compare_label = f"step{en_snapshot_step}_to_step{en_snapshot_step_b}"
         heatmap_path = save_path.replace(".png", f"_en_tristate_{compare_label}.png")
         save_en_tristate_overlay(image_a, en_labels, heatmap_path, alpha=args.en_alpha)
-        pair_elapsed_time = time.time() - pair_start_time
         ratio = pair_elapsed_time / generate_elapsed_time if generate_elapsed_time > 0 else 0.0
         print(f"[✓] Saved EN visualization {heatmap_path}")
         print(
