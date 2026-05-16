@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-EN binary segmentation utilities.
+EN segmentation utilities.
 
 The implementation follows ``47293_EN二值分割算法_数学描述.md`` and returns a
-token-grid mask where 1 means non-converged and 0 means converged.
+token-grid mask or label map based on token-level non-convergence scores.
 """
 from collections import deque
 from pathlib import Path
@@ -15,7 +15,7 @@ from scipy.ndimage import convolve1d, gaussian_filter, laplace, median_filter, u
 
 
 EPS = 1e-6
-GRID_SIZE = (32, 32)
+GRID_SIZE = (64, 64)
 COLOR_PERCENTILES = (2, 98)
 SSIM_WIN = 11
 SSIM_SIGMA = 1.5
@@ -195,13 +195,33 @@ def _block_finalize(labels: np.ndarray, block_size: int) -> np.ndarray:
 def en_binary_segmentation(
     image_a: Image.Image,
     image_b: Image.Image,
+    *,
+    threshold: float = THRESHOLD,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Return ``(mask, token_scores)`` for EN binary segmentation."""
     u_pix = _pixel_non_convergence(image_a, image_b)
     scores = _token_scores(u_pix, GRID_SIZE, POOL_PERCENTILE)
-    labels = (scores >= THRESHOLD).astype(np.uint8)
+    labels = (scores >= threshold).astype(np.uint8)
     labels = _repair_small_e_islands(labels, AREA_MAX, MAX_ITER)
     labels = _block_finalize(labels, BLOCK_SIZE)
+    return labels, scores
+
+
+def en_tristate_segmentation(
+    image_a: Image.Image,
+    image_b: Image.Image,
+    *,
+    threshold_low: float,
+    threshold_high: float,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Return ``(labels, token_scores)`` with 0=converged, 1=near-converged, 2=non-converged."""
+    if threshold_high <= threshold_low:
+        raise ValueError(f"threshold_high must be larger than threshold_low, got {threshold_low}, {threshold_high}")
+    u_pix = _pixel_non_convergence(image_a, image_b)
+    scores = _token_scores(u_pix, GRID_SIZE, POOL_PERCENTILE)
+    labels = np.zeros_like(scores, dtype=np.uint8)
+    labels[(scores >= threshold_low) & (scores <= threshold_high)] = 1
+    labels[scores > threshold_high] = 2
     return labels, scores
 
 
@@ -220,6 +240,42 @@ def save_en_overlay(
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     overlay.paste(red, (0, 0), mask_img)
     out = Image.alpha_composite(base, overlay)
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    out.save(output_path)
+    return out
+
+
+def save_en_tristate_overlay(
+    base_image: Image.Image,
+    labels: np.ndarray,
+    output_path: str,
+    *,
+    alpha: float = 0.45,
+) -> Image.Image:
+    """Overlay 0=converged, 1=near-converged, 2=non-converged labels."""
+    base = base_image.convert("RGBA")
+    label_img = Image.fromarray(labels.astype(np.uint8), mode="L").resize(base.size, Image.NEAREST)
+    label_arr = np.asarray(label_img, dtype=np.uint8)
+
+    overlay = np.zeros((base.size[1], base.size[0], 4), dtype=np.uint8)
+    colors = {
+        0: (210, 255, 210),  # converged: very light green
+        1: (255, 230, 120),  # near-converged: light amber
+        2: (255, 0, 0),      # non-converged: red
+    }
+    alphas = {
+        0: 0.10,
+        1: 0.28,
+        2: alpha,
+    }
+    for label, color in colors.items():
+        mask = label_arr == label
+        overlay[mask, 0] = color[0]
+        overlay[mask, 1] = color[1]
+        overlay[mask, 2] = color[2]
+        overlay[mask, 3] = int(round(255 * alphas[label]))
+
+    out = Image.alpha_composite(base, Image.fromarray(overlay, mode="RGBA"))
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     out.save(output_path)
     return out
