@@ -87,9 +87,9 @@ def main():
     parser.add_argument("--painting_image", type=str, default=None, help="Inpainting & outpainting image path")
     parser.add_argument("--mask_h_ratio", type=float, default=1, help="Height ratio for mask region of In/Out paint task")
     parser.add_argument("--mask_w_ratio", type=float, default=0.2, help="Width ratio for mask region of In/Out paint task")
-    parser.add_argument("--height", type=int, default=1024, help="Image height")
-    parser.add_argument("--width", type=int, default=1024, help="Image width")
-    parser.add_argument("--timesteps", type=int, default=64, help="Number of timesteps")
+    parser.add_argument("--height", type=int, default=512, help="Image height")
+    parser.add_argument("--width", type=int, default=512, help="Image width")
+    parser.add_argument("--timesteps", type=int, default=32, help="Number of timesteps")
     parser.add_argument("--cfg_scale", type=float, default=4.0, help="CFG scale")
     parser.add_argument("--temperature", type=float, default=1.0, help="Temperature")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
@@ -99,10 +99,10 @@ def main():
     parser.add_argument("--cache_ratio", type=float, default=0.9, help="Ratio of reused tokens, in (0,1); the higher the faster")
     parser.add_argument("--warmup_ratio", type=float, default=0.3, help="Warmup ratio for caching, in [0,1); the lower the faster")
     parser.add_argument("--refresh_interval", type=int, default=5, help="Refresh all cache every `refresh_interval` steps, in (1, timesteps-int(warmup_ratio*timesteps)-1]; the higher the faster")
-    parser.add_argument("--en_heatmap", action="store_true", help="Save EN 10->11 segmentation visualization without changing sampling")
-    parser.add_argument("--en_snapshot_step", type=int, default=10, help="Zero-based earlier EN snapshot step")
-    parser.add_argument("--en_snapshot_step_b", type=int, default=11, help="Zero-based later EN snapshot step")
-    parser.add_argument("--en_threshold_pair", type=str, default="0.15:0.45", help='EN tri-state thresholds, e.g. "0.15:0.45"')
+    parser.add_argument("--en_heatmap", action="store_true", help="Save EN step8->step9 segmentation visualization without changing sampling")
+    parser.add_argument("--en_snapshot_step", type=int, default=8, help="Zero-based earlier EN snapshot step")
+    parser.add_argument("--en_snapshot_step_b", type=int, default=9, help="Zero-based later EN snapshot step")
+    parser.add_argument("--en_threshold_pair", type=str, default="0.18:0.48", help='EN tri-state thresholds, e.g. "0.18:0.48"')
     parser.add_argument("--en_alpha", type=float, default=0.45, help="Red overlay alpha for EN heatmap")
     parser.add_argument(
         "--en_region_sampling",
@@ -111,6 +111,12 @@ def main():
         help="Enable EN region-independent sampling schedule (default: enabled; use --no-en_region_sampling for original Lumina)",
     )
     parser.add_argument("--en_region_steps", type=str, default="4,12,20", help="Remaining zero-based sampling steps for EN labels 0,1,2")
+    parser.add_argument(
+        "--en_region_cache_start_step",
+        type=int,
+        default=10,
+        help="First zero-based step that may use cache when EN region sampling is enabled",
+    )
     
     args = parser.parse_args()
     
@@ -248,7 +254,8 @@ def main():
             "EN region sampling: "
             f"zero_based_snapshots=step{en_snapshot_step}->step{en_snapshot_step_b} "
             f"region_steps={en_region_steps} finish_steps={finish_steps} "
-            f"effective_timesteps={effective_timesteps}"
+            f"effective_timesteps={effective_timesteps} "
+            f"cache_start_step={args.en_region_cache_start_step}"
         )
     else:
         print("Sampling mode: original Lumina cosine schedule")
@@ -272,6 +279,7 @@ def main():
         en_region_steps=en_region_steps if args.en_region_sampling else None,
         en_region_snapshot_steps=en_snapshot_steps if args.en_region_sampling else None,
         en_region_label_callback=compute_en_region_labels if args.en_region_sampling else None,
+        en_region_cache_start_step=args.en_region_cache_start_step if args.en_region_sampling else None,
     )
     if need_en_snapshots:
         vq_tokens, snapshots = generation_result

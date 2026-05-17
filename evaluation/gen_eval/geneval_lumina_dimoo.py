@@ -115,6 +115,8 @@ def get_args_parser():
                         help='Red overlay alpha for EN heatmap')
     parser.add_argument('--en_region_steps', type=str, default='4,12,20',
                         help='Remaining sampling steps for EN labels 0,1,2')
+    parser.add_argument('--en_region_cache_start_step', type=int, default=10,
+                        help='First zero-based step that may use cache when EN region sampling is enabled')
 
     return parser
 
@@ -182,6 +184,7 @@ def generate_single_image(
         en_snapshot_step_b=9,
         en_threshold_pair=(0.18, 0.48),
         en_region_steps=None,
+        en_region_cache_start_step=10,
         en_alpha=0.45,
         en_heatmap_path=None,
 ):
@@ -297,6 +300,7 @@ def generate_single_image(
         en_region_steps=en_region_steps if en_region_sampling else None,
         en_region_snapshot_steps=en_snapshot_steps if en_region_sampling else None,
         en_region_label_callback=compute_en_region_labels if en_region_sampling else None,
+        en_region_cache_start_step=en_region_cache_start_step if en_region_sampling else None,
     )
 
     if need_en_snapshots:
@@ -350,7 +354,8 @@ def main(args):
             "🧩 EN 区域独立采样: 开启 "
             f"step{args.en_snapshot_step}->step{args.en_snapshot_step_b}, "
             f"region_steps={en_region_steps}, finish_steps={finish_steps}, "
-            f"effective_timesteps={effective_timesteps}"
+            f"effective_timesteps={effective_timesteps}, "
+            f"cache_start_step={args.en_region_cache_start_step}"
         )
     else:
         effective_timesteps = args.timesteps
@@ -464,6 +469,7 @@ def main(args):
                     en_snapshot_step_b=args.en_snapshot_step_b,
                     en_threshold_pair=en_threshold_pair,
                     en_region_steps=en_region_steps,
+                    en_region_cache_start_step=args.en_region_cache_start_step,
                     en_alpha=args.en_alpha,
                     en_heatmap_path=en_heatmap_path,
                 )
@@ -542,6 +548,7 @@ def main(args):
         'en_snapshot_step_b': args.en_snapshot_step_b,
         'en_threshold_pair': args.en_threshold_pair,
         'en_region_steps': args.en_region_steps,
+        'en_region_cache_start_step': args.en_region_cache_start_step,
         'en_alpha': args.en_alpha,
         'total_samples': len(metadatas),
         'total_images': len(metadatas) * args.n_samples,

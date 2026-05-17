@@ -35,6 +35,7 @@ def generate_image(
     en_region_steps: Optional[list] = None,
     en_region_snapshot_steps: Optional[list] = None,
     en_region_label_callback: Optional[Callable[[dict], object]] = None,
+    en_region_cache_start_step: Optional[int] = None,
 ) -> torch.LongTensor:
     """
     MaskGit parallel decoding to generate VQ tokens
@@ -58,6 +59,7 @@ def generate_image(
         en_region_steps: Remaining sampling steps for EN labels 0/1/2
         en_region_snapshot_steps: Zero-based snapshot steps used to compute EN labels
         en_region_label_callback: Callback that receives snapshots and returns EN labels
+        en_region_cache_start_step: First zero-based step that may use cache in EN region sampling
     
     Returns:
         Final VQ codes (1, seq_len)
@@ -93,7 +95,17 @@ def generate_image(
         if en_region_label_callback is None:
             raise ValueError("en_region_label_callback is required when en_region_steps is set")
 
-    warmup_step = int(timesteps * warmup_ratio)
+    if en_region_steps is not None and en_region_cache_start_step is not None:
+        en_region_cache_start_step = int(en_region_cache_start_step)
+        if en_region_cache_start_step < 1:
+            raise ValueError("en_region_cache_start_step must be >= 1 so step0 can initialize cache masks")
+        if en_region_cache_start_step > timesteps:
+            raise ValueError(
+                f"en_region_cache_start_step={en_region_cache_start_step} exceeds effective timesteps={timesteps}"
+            )
+        warmup_step = en_region_cache_start_step - 1
+    else:
+        warmup_step = int(timesteps * warmup_ratio)
     refresh_steps = torch.zeros(timesteps, dtype=torch.bool)
     snapshot_steps = set(snapshot_steps or [])
     snapshots = {}
