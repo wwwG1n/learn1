@@ -193,11 +193,6 @@ def main():
         en_region_context = {}
         if args.en_region_sampling:
             en_region_steps = parse_en_region_steps(args.en_region_steps)
-            if en_snapshot_step_b + max(en_region_steps) >= args.timesteps:
-                raise ValueError(
-                    "--timesteps is too small for EN region sampling: "
-                    f"step{en_snapshot_step_b} + max({en_region_steps}) must be <= step{args.timesteps - 1}"
-                )
         else:
             en_region_steps = None
     else:
@@ -248,10 +243,12 @@ def main():
 
     if args.en_region_sampling:
         finish_steps = [en_snapshot_step_b + step_count for step_count in en_region_steps]
+        effective_timesteps = max(finish_steps) + 1
         print(
             "EN region sampling: "
             f"zero_based_snapshots=step{en_snapshot_step}->step{en_snapshot_step_b} "
-            f"region_steps={en_region_steps} finish_steps={finish_steps}"
+            f"region_steps={en_region_steps} finish_steps={finish_steps} "
+            f"effective_timesteps={effective_timesteps}"
         )
     else:
         print("Sampling mode: original Lumina cosine schedule")

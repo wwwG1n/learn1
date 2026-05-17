@@ -78,14 +78,6 @@ def generate_image(
     else:  # DDP
         model.module.caching(use_cache)
 
-    warmup_step = int(timesteps * warmup_ratio)
-    refresh_steps = torch.zeros(timesteps, dtype=torch.bool)
-    snapshot_steps = set(snapshot_steps or [])
-    snapshots = {}
-    en_region_labels = None
-    en_region_base_step = None
-    en_region_initial_counts = None
-
     if en_region_steps is not None:
         if len(en_region_steps) != 3:
             raise ValueError(f"en_region_steps must contain 3 integers, got {en_region_steps}")
@@ -97,13 +89,17 @@ def generate_image(
         en_region_snapshot_steps = [int(step_no) for step_no in en_region_snapshot_steps]
         if en_region_snapshot_steps[1] <= en_region_snapshot_steps[0]:
             raise ValueError(f"EN snapshot steps must be increasing, got {en_region_snapshot_steps}")
-        if en_region_snapshot_steps[1] + max(en_region_steps) >= timesteps:
-            raise ValueError(
-                "timesteps is too small for EN region schedule: "
-                f"step{en_region_snapshot_steps[1]} + max({en_region_steps}) must be <= step{timesteps - 1}"
-            )
+        timesteps = en_region_snapshot_steps[1] + max(en_region_steps) + 1
         if en_region_label_callback is None:
             raise ValueError("en_region_label_callback is required when en_region_steps is set")
+
+    warmup_step = int(timesteps * warmup_ratio)
+    refresh_steps = torch.zeros(timesteps, dtype=torch.bool)
+    snapshot_steps = set(snapshot_steps or [])
+    snapshots = {}
+    en_region_labels = None
+    en_region_base_step = None
+    en_region_initial_counts = None
 
     def extract_vq_ids(tokens: torch.LongTensor) -> torch.LongTensor:
         vq_ids = tokens[0, code_start:-2]

@@ -13,7 +13,6 @@ import json
 import argparse
 import time
 from datetime import datetime
-from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
@@ -30,15 +29,6 @@ from utils.prompt_utils import generate_text_to_image_prompt, create_prompt_temp
 from utils.en_segmentation import en_tristate_segmentation, save_en_tristate_overlay
 from generators.image_generation_generator import generate_image
 
-'''
-原始 Lumina:
-CUDA_VISIBLE_DEVICES=0 python evaluation/gen_eval/geneval_lumina_dimoo.py --no-en_region_sampling --timesteps 64 --height 512 --width 512
-
-EN 区域独立采样:
-CUDA_VISIBLE_DEVICES=0 python evaluation/gen_eval/geneval_lumina_dimoo.py --en_region_sampling --en_region_steps "4,12,20" --timesteps 64 --height 512 --width 512
-'''
-
-
 def get_args_parser():
     parser = argparse.ArgumentParser(
         'Lumina-DiMOO GenEval image generation evaluation',
@@ -51,19 +41,19 @@ def get_args_parser():
     --height 512 --width 512 --timesteps 64 \\
     --no-en_region_sampling
 
-  # EN 区域独立采样
+  # EN 区域独立采样（算法超参数使用本脚本默认值）
   CUDA_VISIBLE_DEVICES=0 conda run -n lumina_dimoo python evaluation/gen_eval/geneval_lumina_dimoo.py \\
     --metadata_file prompts/evaluation_metadata.jsonl \\
     --output_root output/geneval_en_region \\
-    --height 512 --width 512 --timesteps 64 \\
-    --en_region_sampling --en_region_steps "4,12,20"
+    --height 512 --width 512 \\
+    --en_region_sampling
 
   # EN 区域独立采样，并额外保存 EN 可视化图
   CUDA_VISIBLE_DEVICES=0 conda run -n lumina_dimoo python evaluation/gen_eval/geneval_lumina_dimoo.py \\
     --metadata_file prompts/evaluation_metadata.jsonl \\
     --output_root output/geneval_en_region_heatmap \\
-    --height 512 --width 512 --timesteps 64 \\
-    --en_region_sampling --en_heatmap --en_region_steps "4,12,20"
+    --height 512 --width 512 \\
+    --en_region_sampling --en_heatmap
 """,
     )
 
@@ -115,12 +105,12 @@ def get_args_parser():
                         help='Enable EN region-independent sampling (default: enabled; use --no-en_region_sampling for original Lumina)')
     parser.add_argument('--en_heatmap', action='store_true',
                         help='Save EN tri-state visualizations for generated samples')
-    parser.add_argument('--en_snapshot_step', type=int, default=10,
+    parser.add_argument('--en_snapshot_step', type=int, default=8,
                         help='Zero-based earlier EN snapshot step')
-    parser.add_argument('--en_snapshot_step_b', type=int, default=11,
+    parser.add_argument('--en_snapshot_step_b', type=int, default=9,
                         help='Zero-based later EN snapshot step')
-    parser.add_argument('--en_threshold_pair', type=str, default='0.15:0.45',
-                        help='EN tri-state thresholds, e.g. "0.15:0.45"')
+    parser.add_argument('--en_threshold_pair', type=str, default='0.18:0.48',
+                        help='EN tri-state thresholds, e.g. "0.18:0.48"')
     parser.add_argument('--en_alpha', type=float, default=0.45,
                         help='Red overlay alpha for EN heatmap')
     parser.add_argument('--en_region_steps', type=str, default='4,12,20',
@@ -188,9 +178,9 @@ def generate_single_image(
         device,
         en_region_sampling=False,
         en_heatmap=False,
-        en_snapshot_step=10,
-        en_snapshot_step_b=11,
-        en_threshold_pair=(0.15, 0.45),
+        en_snapshot_step=8,
+        en_snapshot_step_b=9,
+        en_threshold_pair=(0.18, 0.48),
         en_region_steps=None,
         en_alpha=0.45,
         en_heatmap_path=None,
@@ -249,11 +239,6 @@ def generate_single_image(
 
     if en_region_sampling:
         en_region_steps = list(en_region_steps or [4, 12, 20])
-        if en_snapshot_step_b + max(en_region_steps) >= timesteps:
-            raise ValueError(
-                "timesteps is too small for EN region sampling: "
-                f"step{en_snapshot_step_b} + max({en_region_steps}) must be <= step{timesteps - 1}"
-            )
     else:
         en_region_steps = None
 
@@ -360,20 +345,25 @@ def main(args):
     en_region_steps = parse_en_region_steps(args.en_region_steps)
     if args.en_region_sampling:
         finish_steps = [args.en_snapshot_step_b + step_count for step_count in en_region_steps]
+        effective_timesteps = max(finish_steps) + 1
         print(
             "🧩 EN 区域独立采样: 开启 "
             f"step{args.en_snapshot_step}->step{args.en_snapshot_step_b}, "
-            f"region_steps={en_region_steps}, finish_steps={finish_steps}"
+            f"region_steps={en_region_steps}, finish_steps={finish_steps}, "
+            f"effective_timesteps={effective_timesteps}"
         )
     else:
+        effective_timesteps = args.timesteps
         print("🧩 EN 区域独立采样: 关闭，使用原始 Lumina cosine schedule")
+    if effective_timesteps != args.timesteps:
+        print(f"🔥 区域采样实际步数: {effective_timesteps} (忽略命令行 timesteps={args.timesteps})")
     if args.en_heatmap:
         print("🖼️  EN 可视化: 开启")
 
     # Set random seed
     setup_seed(args.seed)
 
-    # Create output directory with timestamp
+    # Create output directory with timestamp.
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     output_name = f"lumina_dimoo_geneval_{timestamp}"
     if args.output_dir_prefix:
@@ -538,6 +528,7 @@ def main(args):
         'height': args.height,
         'width': args.width,
         'timesteps': args.timesteps,
+        'effective_timesteps': effective_timesteps,
         'cfg_scale': args.cfg_scale,
         'temperature': args.temperature,
         'seed': args.seed,
