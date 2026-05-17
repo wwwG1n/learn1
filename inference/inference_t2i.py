@@ -5,6 +5,7 @@ Text-to-image inference script
 import os
 import argparse
 import time
+from datetime import datetime
 import torch
 from transformers import AutoTokenizer
 from PIL import Image
@@ -37,6 +38,70 @@ def parse_en_region_steps(steps_text):
     if any(step_count < 0 for step_count in steps):
         raise ValueError(f"EN region steps must be non-negative, got {steps}")
     return steps
+
+
+def format_dir_value(value):
+    return f"{value:g}".replace(".", "p")
+
+
+def build_run_dir_name(args, height, width):
+    if args.en_region_sampling:
+        en_region_steps = parse_en_region_steps(args.en_region_steps)
+        finish_steps = [args.en_snapshot_step_b + step_count for step_count in en_region_steps]
+        effective_timesteps = max(finish_steps) + 1
+        en_part = (
+            f"en1_s{args.en_snapshot_step}-{args.en_snapshot_step_b}"
+            f"_thr{args.en_threshold_pair.replace(':', '-')}"
+            f"_rs{'-'.join(str(step) for step in en_region_steps)}"
+            f"_cs{args.en_region_cache_start_step}"
+        )
+    else:
+        effective_timesteps = args.timesteps
+        en_part = "en0"
+
+    cache_part = (
+        f"cache{int(args.use_cache)}"
+        f"_cr{format_dir_value(args.cache_ratio)}"
+        f"_wu{format_dir_value(args.warmup_ratio)}"
+        f"_ri{args.refresh_interval}"
+    )
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return (
+        f"t2i_{timestamp}"
+        f"_h{height}_w{width}"
+        f"_t{args.timesteps}_eff{effective_timesteps}"
+        f"_cfg{format_dir_value(args.cfg_scale)}"
+        f"_temp{format_dir_value(args.temperature)}"
+        f"_seed{args.seed}"
+        f"_{cache_part}_{en_part}"
+    )
+
+
+def print_generation_config(args, height, width):
+    print("Generation config:")
+    print(f"  image_size={height}x{width}")
+    print(f"  timesteps={args.timesteps}")
+    print(f"  cfg_scale={args.cfg_scale}")
+    print(f"  temperature={args.temperature}")
+    print(f"  seed={args.seed}")
+    print(
+        "  cache="
+        f"{args.use_cache} cache_ratio={args.cache_ratio} "
+        f"warmup_ratio={args.warmup_ratio} refresh_interval={args.refresh_interval}"
+    )
+    if args.en_region_sampling:
+        en_region_steps = parse_en_region_steps(args.en_region_steps)
+        finish_steps = [args.en_snapshot_step_b + step_count for step_count in en_region_steps]
+        effective_timesteps = max(finish_steps) + 1
+        print("  en_region_sampling=True")
+        print(f"  en_snapshots=step{args.en_snapshot_step}->step{args.en_snapshot_step_b}")
+        print(f"  en_threshold_pair={args.en_threshold_pair}")
+        print(f"  en_region_steps={en_region_steps}")
+        print(f"  en_finish_steps={finish_steps}")
+        print(f"  effective_timesteps={effective_timesteps}")
+        print(f"  en_region_cache_start_step={args.en_region_cache_start_step}")
+    else:
+        print("  en_region_sampling=False")
 
 
 def main():
@@ -132,9 +197,6 @@ def main():
     if args.seed != 0:
         setup_seed(args.seed)
     
-    # Create Output directory
-    os.makedirs(args.output_dir, exist_ok=True)
-    
     # Load model and tokenizer
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     tokenizer = AutoTokenizer.from_pretrained(args.checkpoint, trust_remote_code=True)
@@ -149,6 +211,12 @@ def main():
     else:
         height = args.height
         width = args.width
+
+    output_root = args.output_dir
+    args.output_dir = os.path.join(output_root, build_run_dir_name(args, height, width))
+    os.makedirs(args.output_dir, exist_ok=True)
+    print(f"Output root: {args.output_dir}")
+    print_generation_config(args, height, width)
 
     # Load VQ-VAE
     from diffusers import VQModel
@@ -235,17 +303,14 @@ def main():
         )
         en_compute_time = time.time() - en_compute_start
 
-        region_labels = overlay_labels
-
         en_region_context.update(
             image_a=image_a,
             image_b=image_b,
             overlay_labels=overlay_labels,
-            region_labels=region_labels,
             en_compute_time=en_compute_time,
             pair_elapsed_time=time.time() - pair_start_time,
         )
-        return region_labels
+        return overlay_labels
 
     if args.en_region_sampling:
         finish_steps = [en_snapshot_step_b + step_count for step_count in en_region_steps]

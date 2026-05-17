@@ -140,6 +140,68 @@ def parse_en_region_steps(steps_text):
     return steps
 
 
+def format_dir_value(value):
+    return f"{value:g}".replace(".", "p")
+
+
+def build_run_dir_name(args, timestamp, effective_timesteps):
+    if args.en_region_sampling:
+        en_region_steps = parse_en_region_steps(args.en_region_steps)
+        en_part = (
+            f"en1_s{args.en_snapshot_step}-{args.en_snapshot_step_b}"
+            f"_thr{args.en_threshold_pair.replace(':', '-')}"
+            f"_rs{'-'.join(str(step) for step in en_region_steps)}"
+            f"_cs{args.en_region_cache_start_step}"
+        )
+    else:
+        en_part = "en0"
+
+    cache_part = (
+        f"cache{int(args.use_cache)}"
+        f"_cr{format_dir_value(args.cache_ratio)}"
+        f"_wu{format_dir_value(args.warmup_ratio)}"
+        f"_ri{args.refresh_interval}"
+    )
+    output_name = (
+        f"lumina_dimoo_geneval_{timestamp}"
+        f"_h{args.height}_w{args.width}"
+        f"_t{args.timesteps}_eff{effective_timesteps}"
+        f"_cfg{format_dir_value(args.cfg_scale)}"
+        f"_temp{format_dir_value(args.temperature)}"
+        f"_seed{args.seed}"
+        f"_n{args.n_samples}"
+        f"_{cache_part}_{en_part}"
+    )
+    if args.output_dir_prefix:
+        output_name = f"{args.output_dir_prefix}_{output_name}"
+    return output_name
+
+
+def print_generation_config(args, effective_timesteps, en_region_steps=None, finish_steps=None):
+    print("📋 生成参数详情:")
+    print(f"  image_size={args.height}x{args.width}")
+    print(f"  n_samples={args.n_samples}")
+    print(f"  timesteps={args.timesteps}")
+    print(f"  effective_timesteps={effective_timesteps}")
+    print(f"  cfg_scale={args.cfg_scale}")
+    print(f"  temperature={args.temperature}")
+    print(f"  seed={args.seed}")
+    print(
+        "  cache="
+        f"{args.use_cache} cache_ratio={args.cache_ratio} "
+        f"warmup_ratio={args.warmup_ratio} refresh_interval={args.refresh_interval}"
+    )
+    if args.en_region_sampling:
+        print("  en_region_sampling=True")
+        print(f"  en_snapshots=step{args.en_snapshot_step}->step{args.en_snapshot_step_b}")
+        print(f"  en_threshold_pair={args.en_threshold_pair}")
+        print(f"  en_region_steps={en_region_steps}")
+        print(f"  en_finish_steps={finish_steps}")
+        print(f"  en_region_cache_start_step={args.en_region_cache_start_step}")
+    else:
+        print("  en_region_sampling=False")
+
+
 def convert_torch_to_int(data):
     """Convert torch tensors to integers for JSON serialization"""
     if isinstance(data, torch.Tensor):
@@ -364,15 +426,14 @@ def main(args):
         print(f"🔥 区域采样实际步数: {effective_timesteps} (忽略命令行 timesteps={args.timesteps})")
     if args.en_heatmap:
         print("🖼️  EN 可视化: 开启")
+    print_generation_config(args, effective_timesteps, en_region_steps, finish_steps if args.en_region_sampling else None)
 
     # Set random seed
     setup_seed(args.seed)
 
     # Create output directory with timestamp.
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_name = f"lumina_dimoo_geneval_{timestamp}"
-    if args.output_dir_prefix:
-        output_name = f"{args.output_dir_prefix}_{output_name}"
+    output_name = build_run_dir_name(args, timestamp, effective_timesteps)
     output_dir = os.path.join(args.output_root, output_name)
     os.makedirs(output_dir, exist_ok=True)
 
