@@ -218,6 +218,7 @@ def generate_image(
         gpu_total_start.record()
 
     for step in range(timesteps):
+        prune_rebuild_step = False
         if unknown_cnt.item() == 0:
             if early_exit_step is None:
                 early_exit_step = step
@@ -335,17 +336,9 @@ def generate_image(
                     code_start = new_code_start
                     position_to_vq = new_position_to_vq
 
-                    # The current cache implementation does not support continuing
-                    # incremental decoding on a physically pruned sequence with
-                    # custom RoPE position ids. Switch to full recomputation on the
-                    # compact sequence for the remaining steps.
-                    if isinstance(model, LLaDAForMultiModalGeneration):
-                        model.empty_cache()
-                        model.caching(False)
-                    else:  # DDP
-                        model.module.empty_cache()
-                        model.module.caching(False)
-                    runtime_use_cache = False
+                    # After pruning, run the current step as a full refresh on the
+                    # compact sequence, then continue normal cache reuse afterwards.
+                    prune_rebuild_step = True
                     cond_to_compute_mask = None
                     uncond_to_compute_mask = None
 
@@ -372,7 +365,7 @@ def generate_image(
                 cond_start_event.record()
             cond_logits = model(x, infer=True,
                     cat='cond', use_cache=runtime_use_cache, 
-                    to_compute_mask=cond_to_compute_mask if not refresh_steps[step] else None,
+                    to_compute_mask=cond_to_compute_mask if (runtime_use_cache and not refresh_steps[step] and not prune_rebuild_step) else None,
                     position_ids=active_position_ids,
                 ).logits[..., vocab_offset : vocab_offset + codebook_size]
             if use_cuda_timing:
@@ -384,7 +377,7 @@ def generate_image(
                 uncond_start_event.record()
             uncond_logits = model(uncond, infer=True,
                     cat='uncond', use_cache=runtime_use_cache, 
-                    to_compute_mask=uncond_to_compute_mask if not refresh_steps[step] else None,
+                    to_compute_mask=uncond_to_compute_mask if (runtime_use_cache and not refresh_steps[step] and not prune_rebuild_step) else None,
                     position_ids=uncond_position_ids,
                 ).logits[..., vocab_offset : vocab_offset + codebook_size]
             if use_cuda_timing:

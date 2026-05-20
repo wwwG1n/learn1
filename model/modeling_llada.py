@@ -427,9 +427,15 @@ class RotaryEmbedding(nn.Module):
                 pos_idx = position_ids.to(device=q_.device, dtype=torch.long)
                 if pos_idx.dim() == 2:
                     pos_idx = pos_idx[0]
+                if q_mask is not None:
+                    q_pos_idx = pos_idx[q_mask]
+                elif pos_idx.numel() == query_len:
+                    q_pos_idx = pos_idx
+                else:
+                    q_pos_idx = pos_idx[key_len - query_len : key_len]
                 q_ = self.apply_rotary_pos_emb(
-                    pos_sin[:, :, pos_idx, :],
-                    pos_cos[:, :, pos_idx, :],
+                    pos_sin[:, :, q_pos_idx, :],
+                    pos_cos[:, :, q_pos_idx, :],
                     q_,
                 )
                 k_ = self.apply_rotary_pos_emb(
