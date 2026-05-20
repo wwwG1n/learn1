@@ -117,6 +117,16 @@ def get_args_parser():
                         help='Remaining sampling steps for EN labels 0,1,2')
     parser.add_argument('--en_region_cache_start_step', type=int, default=10,
                         help='First zero-based step that may use cache when EN region sampling is enabled')
+    parser.add_argument('--cache_prune_ratio', type=float, default=0.0,
+                        help='Fraction of region 0+1 tokens to prune from cache after they finish sampling (0 disables pruning)')
+    parser.add_argument('--cache_prune_context_radius', type=int, default=2,
+                        help='Boundary protection radius around target region-2 tokens during cache pruning')
+    parser.add_argument('--cache_prune_anchor_stride', type=int, default=0,
+                        help='Deterministic anchor stride kept during cache pruning (0 disables anchors)')
+    parser.add_argument('--cache_prune_anchor_ratio', type=float, default=0.0,
+                        help='Random anchor ratio kept during cache pruning')
+    parser.add_argument('--cache_prune_min_keep', type=int, default=0,
+                        help='Minimum candidate tokens to keep after cache pruning')
 
     return parser
 
@@ -191,6 +201,12 @@ def print_generation_config(args, effective_timesteps, en_region_steps=None, fin
         f"{args.use_cache} cache_ratio={args.cache_ratio} "
         f"warmup_ratio={args.warmup_ratio} refresh_interval={args.refresh_interval}"
     )
+    print(
+        "  pruning="
+        f"ratio={args.cache_prune_ratio} context_radius={args.cache_prune_context_radius} "
+        f"anchor_stride={args.cache_prune_anchor_stride} anchor_ratio={args.cache_prune_anchor_ratio} "
+        f"min_keep={args.cache_prune_min_keep}"
+    )
     if args.en_region_sampling:
         print("  en_region_sampling=True")
         print(f"  en_snapshots=step{args.en_snapshot_step}->step{args.en_snapshot_step_b}")
@@ -249,6 +265,12 @@ def generate_single_image(
         en_region_cache_start_step=10,
         en_alpha=0.45,
         en_heatmap_path=None,
+        cache_prune_ratio=0.0,
+        cache_prune_context_radius=2,
+        cache_prune_anchor_stride=0,
+        cache_prune_anchor_ratio=0.0,
+        cache_prune_min_keep=0,
+        return_stats=False,
 ):
     """生成单张图像"""
     # Special tokens
@@ -363,24 +385,27 @@ def generate_single_image(
         en_region_snapshot_steps=en_snapshot_steps if en_region_sampling else None,
         en_region_label_callback=compute_en_region_labels if en_region_sampling else None,
         en_region_cache_start_step=en_region_cache_start_step if en_region_sampling else None,
+        cache_prune_ratio=cache_prune_ratio,
+        cache_prune_context_radius=cache_prune_context_radius,
+        cache_prune_anchor_stride=cache_prune_anchor_stride,
+        cache_prune_anchor_ratio=cache_prune_anchor_ratio,
+        cache_prune_min_keep=cache_prune_min_keep,
+        return_stats=return_stats,
     )
 
+    run_stats = None
     if need_en_snapshots:
-        vq_tokens, snapshots = generation_result
+        if return_stats:
+            vq_tokens, snapshots, run_stats = generation_result
+        else:
+            vq_tokens, snapshots = generation_result
     else:
-        vq_tokens = generation_result
+        if return_stats:
+            vq_tokens, run_stats = generation_result
+        else:
+            vq_tokens = generation_result
         snapshots = {}
 
-    if en_heatmap:
-        if not en_context:
-            compute_en_region_labels(snapshots)
-        if en_heatmap_path is not None:
-            save_en_tristate_overlay(
-                en_context["image_a"],
-                en_context["labels"],
-                en_heatmap_path,
-                alpha=en_alpha,
-            )
 
     # Decode VQ codes to image (返回 PIL Image 而不是保存)
     # 临时保存路径
@@ -394,6 +419,19 @@ def generate_single_image(
         vqvae=vqvae
     )
 
+    if en_heatmap:
+        if not en_context:
+            compute_en_region_labels(snapshots)
+        if en_heatmap_path is not None:
+            save_en_tristate_overlay(
+                out_img,
+                en_context["labels"],
+                en_heatmap_path,
+                alpha=en_alpha,
+            )
+
+    if return_stats:
+        return out_img, run_stats
     return out_img
 
 
@@ -470,6 +508,14 @@ def main(args):
 
     # Process each sample
     total_time = 0
+    total_cond_forward_time = 0.0
+    total_uncond_forward_time = 0.0
+    total_gpu_time = 0.0
+    total_cond_forward_steps = 0
+    total_uncond_forward_steps = 0
+    executed_steps_values = []
+    total_images_ok = 0
+    total_images_all = len(metadatas) * args.n_samples
     for index, metadata in enumerate(tqdm(metadatas, desc="生成图像")):
         # Create output directory for this sample
         sample_output_dir = os.path.join(output_dir, f"{index:05d}")
@@ -508,7 +554,7 @@ def main(args):
                     if en_heatmap_dir is not None
                     else None
                 )
-                img = generate_single_image(
+                img, run_stats = generate_single_image(
                     model=model,
                     tokenizer=tokenizer,
                     vqvae=vqvae,
@@ -533,6 +579,12 @@ def main(args):
                     en_region_cache_start_step=args.en_region_cache_start_step,
                     en_alpha=args.en_alpha,
                     en_heatmap_path=en_heatmap_path,
+                    cache_prune_ratio=args.cache_prune_ratio,
+                    cache_prune_context_radius=args.cache_prune_context_radius,
+                    cache_prune_anchor_stride=args.cache_prune_anchor_stride,
+                    cache_prune_anchor_ratio=args.cache_prune_anchor_ratio,
+                    cache_prune_min_keep=args.cache_prune_min_keep,
+                    return_stats=True,
                 )
 
                 # Save individual sample
@@ -542,7 +594,21 @@ def main(args):
                 # Collect for grid
                 sample_images.append(img)
 
-                print(f"  ✅ 样本 {sample_idx + 1}/{args.n_samples} 已生成")
+                executed_steps = int(run_stats.get("executed_steps", effective_timesteps)) if run_stats else effective_timesteps
+                cond_forward_time_seconds = float(run_stats.get("cond_forward_time_seconds", 0.0)) if run_stats else 0.0
+                uncond_forward_time_seconds = float(run_stats.get("uncond_forward_time_seconds", 0.0)) if run_stats else 0.0
+                gpu_time_seconds = float(run_stats.get("gpu_time_seconds", 0.0) or 0.0) if run_stats else 0.0
+                cond_forward_steps = int(run_stats.get("cond_forward_steps", 0)) if run_stats else 0
+                uncond_forward_steps = int(run_stats.get("uncond_forward_steps", 0)) if run_stats else 0
+                total_cond_forward_time += cond_forward_time_seconds
+                total_uncond_forward_time += uncond_forward_time_seconds
+                total_gpu_time += gpu_time_seconds
+                total_cond_forward_steps += cond_forward_steps
+                total_uncond_forward_steps += uncond_forward_steps
+                executed_steps_values.append(executed_steps)
+                total_images_ok += 1
+
+                print(f"  ✅ 样本 {sample_idx + 1}/{args.n_samples} 已生成 ({executed_steps} steps)")
 
             except Exception as e:
                 print(f"  ❌ 样本 {sample_idx + 1} 生成失败: {e}")
@@ -585,6 +651,30 @@ def main(args):
     print(f"📈 平均每张: {total_time / (len(metadatas) * args.n_samples):.2f}s")
     print(f"💾 结果保存至: {output_dir}")
 
+    avg_time_per_image_all = total_time / total_images_all
+    executed_steps_summary = {
+        "total_images": total_images_all,
+        "successful_images": total_images_ok,
+        "failed_images": total_images_all - total_images_ok,
+        "avg_executed_steps": (sum(executed_steps_values) / len(executed_steps_values)) if executed_steps_values else None,
+        "min_executed_steps": min(executed_steps_values) if executed_steps_values else None,
+        "max_executed_steps": max(executed_steps_values) if executed_steps_values else None,
+    }
+    timing_summary = {
+        "avg_generation_time_per_image_seconds": avg_time_per_image_all,
+        "avg_executed_steps_per_image": executed_steps_summary["avg_executed_steps"],
+        "avg_cond_forward_time_per_image_seconds": (total_cond_forward_time / total_images_ok) if total_images_ok else None,
+        "avg_uncond_forward_time_per_image_seconds": (total_uncond_forward_time / total_images_ok) if total_images_ok else None,
+        "avg_gpu_time_per_image_seconds": (total_gpu_time / total_images_ok) if total_images_ok else None,
+        "avg_cond_forward_time_per_step_seconds": (total_cond_forward_time / total_cond_forward_steps) if total_cond_forward_steps else None,
+        "avg_uncond_forward_time_per_step_seconds": (total_uncond_forward_time / total_uncond_forward_steps) if total_uncond_forward_steps else None,
+        "total_cond_forward_steps": total_cond_forward_steps,
+        "total_uncond_forward_steps": total_uncond_forward_steps,
+    }
+
+    print(f"📉 实际步数: avg={executed_steps_summary['avg_executed_steps']}, min={executed_steps_summary['min_executed_steps']}, max={executed_steps_summary['max_executed_steps']}")
+    print(f"[Timing] cond/img={timing_summary['avg_cond_forward_time_per_image_seconds']}, uncond/img={timing_summary['avg_uncond_forward_time_per_image_seconds']}, gpu/img={timing_summary['avg_gpu_time_per_image_seconds']}, cond/step={timing_summary['avg_cond_forward_time_per_step_seconds']}")
+
     # Save generation parameters
     params = {
         'checkpoint': args.checkpoint,
@@ -611,10 +701,18 @@ def main(args):
         'en_region_steps': args.en_region_steps,
         'en_region_cache_start_step': args.en_region_cache_start_step,
         'en_alpha': args.en_alpha,
+        'cache_prune_ratio': args.cache_prune_ratio,
+        'cache_prune_context_radius': args.cache_prune_context_radius,
+        'cache_prune_anchor_stride': args.cache_prune_anchor_stride,
+        'cache_prune_anchor_ratio': args.cache_prune_anchor_ratio,
+        'cache_prune_min_keep': args.cache_prune_min_keep,
         'total_samples': len(metadatas),
         'total_images': len(metadatas) * args.n_samples,
         'total_time': total_time,
-        'avg_time_per_image': total_time / (len(metadatas) * args.n_samples),
+        'avg_time_per_image': avg_time_per_image_all,
+        'executed_steps_summary': executed_steps_summary,
+        'timing_summary': timing_summary,
+        'rope_encoding_mode': 'original',
         'timestamp': timestamp
     }
 

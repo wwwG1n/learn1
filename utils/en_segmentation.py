@@ -261,12 +261,12 @@ def save_en_tristate_overlay(
 
     overlay = np.zeros((base.size[1], base.size[0], 4), dtype=np.uint8)
     colors = {
-        0: (210, 255, 210),  # converged: very light green
-        1: (255, 230, 120),  # near-converged: light amber
+        0: (0, 0, 0),        # converged: no overlay
+        1: (170, 255, 170),  # near-converged: light green
         2: (255, 0, 0),      # non-converged: red
     }
     alphas = {
-        0: 0.10,
+        0: 0.0,
         1: 0.28,
         2: alpha,
     }
