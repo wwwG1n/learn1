@@ -6,6 +6,7 @@ import torch
 import math
 from typing import Callable, Optional
 from utils.generation_utils import cosine_schedule, gumbel_max_sample, mask_by_random_topk
+from utils.cache_pruning import CachePrunePlan, build_cache_prune_plan, prune_model_cache
 from model import LLaDAForMultiModalGeneration
 
 
@@ -37,6 +38,13 @@ def generate_image(
     en_region_snapshot_steps: Optional[list] = None,
     en_region_label_callback: Optional[Callable[[dict], object]] = None,
     en_region_cache_start_step: Optional[int] = None,
+    cache_prune_ratio: float = 0.0,
+    cache_prune_context_radius: int = 2,
+    cache_prune_anchor_stride: int = 0,
+    cache_prune_anchor_ratio: float = 0.0,
+    cache_prune_min_keep: int = 0,
+    token_grid_height: int = 32,
+    token_grid_width: int = 32,
 ) -> torch.LongTensor:
     """
     MaskGit parallel decoding to generate VQ tokens
@@ -61,6 +69,13 @@ def generate_image(
         en_region_snapshot_steps: Zero-based snapshot steps used to compute EN labels
         en_region_label_callback: Callback that receives snapshots and returns EN labels
         en_region_cache_start_step: First zero-based step that may use cache in EN region sampling
+        cache_prune_ratio: Fraction of region 0+1 tokens to prune from cache (0=disabled)
+        cache_prune_context_radius: Boundary protection radius around target (region 2)
+        cache_prune_anchor_stride: Deterministic anchor grid stride
+        cache_prune_anchor_ratio: Random anchor ratio
+        cache_prune_min_keep: Minimum candidate tokens to keep after pruning
+        token_grid_height: Token grid height for distance computation
+        token_grid_width: Token grid width for distance computation
     
     Returns:
         Final VQ codes (1, seq_len)
@@ -114,6 +129,11 @@ def generate_image(
     en_region_labels = None
     en_region_base_step = None
     en_region_initial_counts = None
+
+    # Cache pruning state
+    cache_pruned = False
+    active_position_ids = None  # None means use sequential positions (no pruning yet)
+    pruned_vq_ids_snapshot = None
 
     # Initialize compute masks for token cache
     cond_to_compute_mask = None
@@ -216,10 +236,135 @@ def generate_image(
             else:  # DDP
                 model.module.empty_cache()
 
+        # Check if we should trigger cache pruning:
+        # After region 0 and region 1 have both finished sampling
+        if (
+            not cache_pruned
+            and cache_prune_ratio > 0
+            and en_region_labels is not None
+            and en_region_base_step is not None
+        ):
+            local_step = step - en_region_base_step
+            r0_done = local_step >= en_region_steps[0]
+            r1_done = local_step >= en_region_steps[1]
+            if local_step == en_region_steps[1]:
+                print(
+                    f"[PruneGate] step={step} local_step={local_step} ratio={cache_prune_ratio} "
+                    f"r0_done={r0_done} r1_done={r1_done}",
+                    flush=True,
+                )
+            if r0_done and r1_done:
+                _model = model if isinstance(model, LLaDAForMultiModalGeneration) else model.module
+                plan = build_cache_prune_plan(
+                    x,
+                    en_region_labels=en_region_labels,
+                    position_to_vq=position_to_vq,
+                    mask_token_id=mask_token_id,
+                    code_start=code_start,
+                    newline_id=newline_id,
+                    grid_h=token_grid_height,
+                    grid_w=token_grid_width,
+                    prune_ratio=cache_prune_ratio,
+                    context_radius=cache_prune_context_radius,
+                    anchor_stride=cache_prune_anchor_stride,
+                    anchor_ratio=cache_prune_anchor_ratio,
+                    min_keep=cache_prune_min_keep,
+                )
+                print(
+                    f"[Prune] step={step} local_step={local_step} ratio={cache_prune_ratio} "
+                    f"pruned={plan.pruned_count} kept={int(plan.keep_indices.numel())} total_before={plan.total_before}",
+                    flush=True,
+                )
+                if plan.pruned_count > 0:
+                    pruned_vq_ids_snapshot = extract_vq_ids(x)
+                    cond_suffix_start = code_start - 2
+                    uncond_prefix_len = uncon_ids.size(1)
+                    cond_keep = plan.keep_indices
+                    cond_suffix_keep = cond_keep[cond_keep >= cond_suffix_start]
+                    uncond_suffix_keep = (cond_suffix_keep - cond_suffix_start) + uncond_prefix_len
+                    uncond_total_len = int(uncond_prefix_len + (plan.total_before - cond_suffix_start))
+                    uncond_keep = torch.cat([
+                        torch.arange(uncond_prefix_len, dtype=torch.long, device=device),
+                        uncond_suffix_keep.to(torch.long),
+                    ])
+                    if torch.any(uncond_keep < 0) or torch.any(uncond_keep >= uncond_total_len):
+                        raise RuntimeError(
+                            f"Mapped uncond keep indices out of bounds: min={int(uncond_keep.min().item())}, "
+                            f"max={int(uncond_keep.max().item())}, total={uncond_total_len}"
+                        )
+                    prune_model_cache(_model, plan, cat='cond')
+                    uncond_plan = CachePrunePlan(
+                        keep_indices=uncond_keep,
+                        position_ids=uncond_keep.clone(),
+                        pruned_count=plan.pruned_count,
+                        total_before=uncond_total_len,
+                    )
+                    prune_model_cache(_model, uncond_plan, cat='uncond')
+                    active_position_ids = plan.position_ids.unsqueeze(0)  # (1, new_T)
+
+                    # Rebuild x, vq_mask, position_to_vq on the compact sequence
+                    x = x[:, plan.keep_indices]
+                    vq_mask = x == mask_token_id
+                    unknown_cnt = vq_mask.sum(dim=1, keepdim=True)
+
+                    # Rebuild position_to_vq for the compact sequence
+                    orig_to_compact = torch.full(
+                        (plan.total_before,), -1, dtype=torch.long, device=device
+                    )
+                    orig_to_compact[plan.keep_indices] = torch.arange(
+                        plan.keep_indices.numel(), dtype=torch.long, device=device
+                    )
+                    kept_vq_compact = orig_to_compact[vq_positions]
+                    kept_vq_compact = kept_vq_compact[kept_vq_compact >= 0]
+                    if kept_vq_compact.numel() == 0:
+                        raise RuntimeError("All VQ positions were pruned; this should never happen")
+                    new_code_start = int(kept_vq_compact.min().item())
+
+                    # Rebuild position_to_vq on compact sequence
+                    compact_len = x.size(1)
+                    new_position_to_vq = torch.full(
+                        (compact_len,), -1, dtype=torch.long, device=device
+                    )
+                    # Map VQ positions through orig_to_compact
+                    for orig_pos_idx in range(vq_positions.numel()):
+                        orig_pos = vq_positions[orig_pos_idx].item()
+                        compact_pos = orig_to_compact[orig_pos].item()
+                        if compact_pos >= 0:
+                            new_position_to_vq[compact_pos] = orig_pos_idx
+
+                    code_start = new_code_start
+                    position_to_vq = new_position_to_vq
+
+                    # The current cache implementation does not support continuing
+                    # incremental decoding on a physically pruned sequence with
+                    # custom RoPE position ids. Switch to full recomputation on the
+                    # compact sequence for the remaining steps.
+                    if isinstance(model, LLaDAForMultiModalGeneration):
+                        model.empty_cache()
+                        model.caching(False)
+                    else:  # DDP
+                        model.module.empty_cache()
+                        model.module.caching(False)
+                    runtime_use_cache = False
+                    cond_to_compute_mask = None
+                    uncond_to_compute_mask = None
+
+                cache_pruned = True
+
         # Forward pass (with/without CFG)
         if cfg_scale > 0:
             uncond = torch.cat((uncon_ids.to(x.device), x[:, code_start-2:]), axis=1)
             uncond_vq_mask = torch.cat((torch.zeros((1, uncon_ids.size()[1]), dtype=torch.bool).to(x.device), vq_mask[:, code_start-2:]), axis=1)
+
+            # Build position_ids for uncond if cache has been pruned
+            uncond_position_ids = None
+            if active_position_ids is not None:
+                # uncond prefix uses sequential positions, then append the pruned positions for image part
+                uncond_prefix_len = uncon_ids.size(1)
+                uncond_prefix_pos = torch.arange(uncond_prefix_len, dtype=torch.long, device=device)
+                # The image part positions come from active_position_ids starting at code_start-2
+                image_part_pos = active_position_ids[0, code_start - 2:]
+                uncond_position_ids = torch.cat([uncond_prefix_pos, image_part_pos]).unsqueeze(0)
 
             if use_cuda_timing:
                 cond_start_event = torch.cuda.Event(enable_timing=True)
@@ -228,6 +373,7 @@ def generate_image(
             cond_logits = model(x, infer=True,
                     cat='cond', use_cache=runtime_use_cache, 
                     to_compute_mask=cond_to_compute_mask if not refresh_steps[step] else None,
+                    position_ids=active_position_ids,
                 ).logits[..., vocab_offset : vocab_offset + codebook_size]
             if use_cuda_timing:
                 cond_end_event.record()
@@ -239,6 +385,7 @@ def generate_image(
             uncond_logits = model(uncond, infer=True,
                     cat='uncond', use_cache=runtime_use_cache, 
                     to_compute_mask=uncond_to_compute_mask if not refresh_steps[step] else None,
+                    position_ids=uncond_position_ids,
                 ).logits[..., vocab_offset : vocab_offset + codebook_size]
             if use_cuda_timing:
                 uncond_end_event.record()
@@ -256,7 +403,7 @@ def generate_image(
                 cond_end_event = torch.cuda.Event(enable_timing=True)
                 cond_start_event.record()
             logits = model(
-                x, infer=True
+                x, infer=True, position_ids=active_position_ids
             ).logits[:, vq_mask[0], vocab_offset : vocab_offset + codebook_size]
             if use_cuda_timing:
                 cond_end_event.record()
@@ -307,7 +454,7 @@ def generate_image(
             en_region_initial_counts = torch.bincount(current_labels, minlength=3)[:3].long()
             en_region_base_step = step
             print(
-                f"[EN] base_step={en_region_base_step} counts={en_region_initial_counts.tolist()}",
+                f"[EN] base_step={en_region_base_step} counts={en_region_initial_counts.tolist()} prune_ratio={cache_prune_ratio}",
                 flush=True,
             )
 
@@ -321,8 +468,19 @@ def generate_image(
             uncond_to_compute_mask = uncond_conf <= uncond_conf_threshold
             
 
-    # Remove newline tokens
-    vq_ids = extract_vq_ids(x)
+    # Remove newline tokens and recover full VQ ids
+    if cache_pruned and active_position_ids is not None:
+        # After pruning, merge the compact sequence back into the full VQ grid.
+        if pruned_vq_ids_snapshot is None:
+            raise RuntimeError("Missing pruned_vq_ids_snapshot after cache pruning")
+        compact_len = x.size(1)
+        vq_ids = pruned_vq_ids_snapshot.clone()
+        for i in range(compact_len):
+            vq_idx = position_to_vq[i].item()
+            if vq_idx >= 0:
+                vq_ids[0, vq_idx] = x[0, i]
+    else:
+        vq_ids = extract_vq_ids(x)
 
     if use_cuda_timing:
         gpu_total_end.record()

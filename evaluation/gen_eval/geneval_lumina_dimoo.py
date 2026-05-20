@@ -117,6 +117,16 @@ def get_args_parser():
                         help='Remaining sampling steps for EN labels 0,1,2')
     parser.add_argument('--en_region_cache_start_step', type=int, default=10,
                         help='First zero-based step that may use cache when EN region sampling is enabled')
+    parser.add_argument('--cache_prune_ratio', type=float, default=0.0,
+                        help='Fraction of region 0+1 tokens to prune from cache after they finish sampling (0 disables pruning)')
+    parser.add_argument('--cache_prune_context_radius', type=int, default=2,
+                        help='Boundary protection radius around target region-2 tokens during cache pruning')
+    parser.add_argument('--cache_prune_anchor_stride', type=int, default=0,
+                        help='Deterministic anchor stride kept during cache pruning (0 disables anchors)')
+    parser.add_argument('--cache_prune_anchor_ratio', type=float, default=0.0,
+                        help='Random anchor ratio kept during cache pruning')
+    parser.add_argument('--cache_prune_min_keep', type=int, default=0,
+                        help='Minimum candidate tokens to keep after cache pruning')
 
     return parser
 
@@ -191,6 +201,12 @@ def print_generation_config(args, effective_timesteps, en_region_steps=None, fin
         f"{args.use_cache} cache_ratio={args.cache_ratio} "
         f"warmup_ratio={args.warmup_ratio} refresh_interval={args.refresh_interval}"
     )
+    print(
+        "  pruning="
+        f"ratio={args.cache_prune_ratio} context_radius={args.cache_prune_context_radius} "
+        f"anchor_stride={args.cache_prune_anchor_stride} anchor_ratio={args.cache_prune_anchor_ratio} "
+        f"min_keep={args.cache_prune_min_keep}"
+    )
     if args.en_region_sampling:
         print("  en_region_sampling=True")
         print(f"  en_snapshots=step{args.en_snapshot_step}->step{args.en_snapshot_step_b}")
@@ -249,6 +265,11 @@ def generate_single_image(
         en_region_cache_start_step=10,
         en_alpha=0.45,
         en_heatmap_path=None,
+        cache_prune_ratio=0.0,
+        cache_prune_context_radius=2,
+        cache_prune_anchor_stride=0,
+        cache_prune_anchor_ratio=0.0,
+        cache_prune_min_keep=0,
         return_stats=False,
 ):
     """生成单张图像"""
@@ -364,6 +385,11 @@ def generate_single_image(
         en_region_snapshot_steps=en_snapshot_steps if en_region_sampling else None,
         en_region_label_callback=compute_en_region_labels if en_region_sampling else None,
         en_region_cache_start_step=en_region_cache_start_step if en_region_sampling else None,
+        cache_prune_ratio=cache_prune_ratio,
+        cache_prune_context_radius=cache_prune_context_radius,
+        cache_prune_anchor_stride=cache_prune_anchor_stride,
+        cache_prune_anchor_ratio=cache_prune_anchor_ratio,
+        cache_prune_min_keep=cache_prune_min_keep,
         return_stats=return_stats,
     )
 
@@ -553,6 +579,11 @@ def main(args):
                     en_region_cache_start_step=args.en_region_cache_start_step,
                     en_alpha=args.en_alpha,
                     en_heatmap_path=en_heatmap_path,
+                    cache_prune_ratio=args.cache_prune_ratio,
+                    cache_prune_context_radius=args.cache_prune_context_radius,
+                    cache_prune_anchor_stride=args.cache_prune_anchor_stride,
+                    cache_prune_anchor_ratio=args.cache_prune_anchor_ratio,
+                    cache_prune_min_keep=args.cache_prune_min_keep,
                     return_stats=True,
                 )
 
@@ -670,6 +701,11 @@ def main(args):
         'en_region_steps': args.en_region_steps,
         'en_region_cache_start_step': args.en_region_cache_start_step,
         'en_alpha': args.en_alpha,
+        'cache_prune_ratio': args.cache_prune_ratio,
+        'cache_prune_context_radius': args.cache_prune_context_radius,
+        'cache_prune_anchor_stride': args.cache_prune_anchor_stride,
+        'cache_prune_anchor_ratio': args.cache_prune_anchor_ratio,
+        'cache_prune_min_keep': args.cache_prune_min_keep,
         'total_samples': len(metadatas),
         'total_images': len(metadatas) * args.n_samples,
         'total_time': total_time,
