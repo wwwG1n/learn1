@@ -3,7 +3,7 @@
 简洁运行示例（在仓库根目录执行）：
 
 1. 默认全流程：生成 + GenEval 评估
-   CUDA_VISIBLE_DEVICES=1 ./scripts/eval_gen_eval.sh
+   CUDA_VISIBLE_DEVICES=0 ./scripts/eval_gen_eval.sh
 
 2. 指定输出前缀
    CUDA_VISIBLE_DEVICES=0 GENEVAL_OUTPUT_DIR_PREFIX=exp01 ./scripts/eval_gen_eval.sh

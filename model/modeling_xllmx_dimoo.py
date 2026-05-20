@@ -26,35 +26,22 @@ class LLaDAForMultiModalGeneration(LLaDAModelLM):
         super().__init__(config, *args, **kwargs)
     
     def forward(self, input_ids=None, labels=None, infer=False, use_cache=False, to_compute_mask=None, cat='', **kwargs):
-        position_ids = kwargs.get("position_ids", None)
         if infer:
             input_ids = input_ids.tolist()
-            if position_ids is not None and torch.is_tensor(position_ids):
-                position_ids = position_ids.tolist()
         # ========================================================
         # padding input batch len & attention bias for attention mask
         # ========================================================
         max_tokens = max([len(_) for _ in input_ids])
         original_lengths = [len(example) for example in input_ids] # every sample len --> record for attention mask
         input_ids = [example + [0] * (max_tokens - len(example)) for example in input_ids] # padding 0 to right --> max length
-        input_ids = torch.tensor(input_ids, dtype=torch.int64, device=self.device)
-        if position_ids is not None:
-            position_ids = [
-                example + [0] * (max_tokens - len(example))
-                for example in position_ids
-            ]
-            position_ids = torch.tensor(position_ids, dtype=torch.long, device=self.device)
+        input_ids = torch.tensor(input_ids, dtype=torch.int64, device=self.device) 
         # attn mask
         attention_mask = create_attention_mask(original_lengths, max_tokens, self.device)
         attention_bias = (attention_mask[:, :, None] & attention_mask[:, None, :]).bool().unsqueeze(1)
         # ========================================================
         # model output 
         # ========================================================
-        output = LLaDAModelLM.forward(
-            self, input_ids=input_ids, attention_bias=attention_bias,
-            use_cache=use_cache, to_compute_mask=to_compute_mask, cat=cat,
-            position_ids=position_ids,
-        )
+        output = LLaDAModelLM.forward(self, input_ids=input_ids, attention_bias=attention_bias, use_cache=use_cache, to_compute_mask=to_compute_mask, cat=cat)
         if infer:
             return output
         
