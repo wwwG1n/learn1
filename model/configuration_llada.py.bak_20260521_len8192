@@ -266,7 +266,7 @@ class ModelConfig():
     Toggle affine transform for the QK norms.
     """
 
-    max_sequence_length: int = 8192
+    max_sequence_length: int = 1024
     """
     The maximum input sequence length supported by the model.
     """

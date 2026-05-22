@@ -390,6 +390,8 @@ def generate_single_image(
         cache_prune_anchor_stride=cache_prune_anchor_stride,
         cache_prune_anchor_ratio=cache_prune_anchor_ratio,
         cache_prune_min_keep=cache_prune_min_keep,
+        token_grid_height=token_grid_height,
+        token_grid_width=token_grid_width,
         return_stats=return_stats,
     )
 
